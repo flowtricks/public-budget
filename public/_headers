@@ -1,0 +1,9 @@
+/*
+  X-Robots-Tag: noindex, nofollow
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: same-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.plaid.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss: ws://localhost:* ws://127.0.0.1:* https://*.plaid.com; frame-src https://*.plaid.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+/sw.js
+  Cache-Control: no-cache

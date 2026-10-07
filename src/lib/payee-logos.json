@@ -1,0 +1,516 @@
+{
+  "amazon.com": [
+    "Amazon"
+  ],
+  "walmart.com": [
+    "Walmart",
+    "Wal Mart",
+    "Wal-Mart"
+  ],
+  "mcdonalds.com": [
+    "McDonald's"
+  ],
+  "chick-fil-a.com": [
+    "Chick-fil-A",
+    "Chick Fil A"
+  ],
+  "raisingcanes.com": [
+    "Cane's"
+  ],
+  "sonicdrivein.com": [
+    "Sonic"
+  ],
+  "target.com": [
+    "Target"
+  ],
+  "disneyplus.com": [
+    "Disney+"
+  ],
+  "disney.com": [
+    "Disney"
+  ],
+  "wendys.com": [
+    "Wendy's"
+  ],
+  "hp.com": [
+    "Instant ink"
+  ],
+  "lowes.com": [
+    "Lowes"
+  ],
+  "subway-choicemark": [
+    "SubWay"
+  ],
+  "starbucks.com": [
+    "Starbucks"
+  ],
+  "popeyes.com": [
+    "Popeyes"
+  ],
+  "littlecaesars.com": [
+    "Little Caesars"
+  ],
+  "dairyqueen.com": [
+    "Dairy Queen"
+  ],
+  "netflix.com": [
+    "Netflix"
+  ],
+  "dollartree.com": [
+    "Dollar Tree"
+  ],
+  "dollargeneral.com": [
+    "Dollar General"
+  ],
+  "etsy.com": [
+    "Etsy"
+  ],
+  "progressive.com": [
+    "Progressive"
+  ],
+  "protective-life": [
+    "Protective Life"
+  ],
+  "exxonmobil.com": [
+    "ExxonMobil",
+    "Exxon Mobil",
+    "Exxon"
+  ],
+  "uber.com": [
+    "Uber"
+  ],
+  "cvs.com": [
+    "CVS"
+  ],
+  "familydollar.com": [
+    "Family Dollar"
+  ],
+  "walgreens.com": [
+    "Walgreens"
+  ],
+  "crumblcookies.com": [
+    "Crumbl"
+  ],
+  "adobe.com": [
+    "Adobe"
+  ],
+  "royalcaribbean.com": [
+    "Royal Carribean"
+  ],
+  "hobbylobby.com": [
+    "Hobby Lobby"
+  ],
+  "olivegarden.com": [
+    "Olive Garden"
+  ],
+  "godaddy.com": [
+    "GoDaddy"
+  ],
+  "honda.com": [
+    "Honda"
+  ],
+  "samsclub.com": [
+    "Sam's"
+  ],
+  "papajohns.com": [
+    "Papa Johns"
+  ],
+  "outback.com": [
+    "Outback"
+  ],
+  "officedepot.com": [
+    "Office Depot"
+  ],
+  "traderjoes.com": [
+    "Trader Joe’s"
+  ],
+  "ebay.com": [
+    "eBay"
+  ],
+  "shakeshack.com": [
+    "Shake Shack"
+  ],
+  "fivebelow.com": [
+    "Five Below"
+  ],
+  "ring.com": [
+    "Ring"
+  ],
+  "baskinrobbins.com": [
+    "Baskin robbins"
+  ],
+  "costco.com": [
+    "Costco"
+  ],
+  "irs": [
+    "IRS"
+  ],
+  "factor75.com": [
+    "Factor"
+  ],
+  "southwest.com": [
+    "Southwest"
+  ],
+  "barnesandnoble.com": [
+    "Barnes & Noble"
+  ],
+  "dominos.com": [
+    "Dominoes"
+  ],
+  "webflow.com": [
+    "Webflow"
+  ],
+  "doordash.com": [
+    "DoorDash"
+  ],
+  "sherwin-williams.com": [
+    "Sherwin-Williams"
+  ],
+  "nothing-bundt-cakes": [
+    "Nothing Bundt Cakes"
+  ],
+  "ralphs": [
+    "Ralphs"
+  ],
+  "chilis.com": [
+    "Chili's"
+  ],
+  "ikea.com": [
+    "IKEA"
+  ],
+  "andys": [
+    "Andys"
+  ],
+  "aliexpress": [
+    "AliExpress"
+  ],
+  "fedex": [
+    "FedEx"
+  ],
+  "panda-express": [
+    "Panda Express"
+  ],
+  "wingstop": [
+    "Wing Stop"
+  ],
+  "buc-ees": [
+    "Buc-ee's"
+  ],
+  "jimmy-johns": [
+    "Jimmy John's"
+  ],
+  "jeremiahs": [
+    "Jeremiah's Italian Ice"
+  ],
+  "racetrac": [
+    "Race Track"
+  ],
+  "chuck-e-cheese": [
+    "Chuck E Cheese"
+  ],
+  "cabelas.com": [
+    "Cabela's"
+  ],
+  "shutterfly.com": [
+    "Shutterfly"
+  ],
+  "autozone.com": [
+    "AutoZone"
+  ],
+  "wayfair.com": [
+    "Wayfair"
+  ],
+  "paypal.com": [
+    "Paypal"
+  ],
+  "crocs.com": [
+    "Crocs"
+  ],
+  "homedepot.com": [
+    "Home Depot"
+  ],
+  "shell.com": [
+    "Shell"
+  ],
+  "ihop.com": [
+    "iHop"
+  ],
+  "enterprise": [
+    "Enterprise"
+  ],
+  "uhaul.com": [
+    "U-Haul"
+  ],
+  "harbor-freight": [
+    "Harbor Freight"
+  ],
+  "cava.com": [
+    "Cava"
+  ],
+  "krispykreme.com": [
+    "Krispy Kreme"
+  ],
+  "atmosenergy.com": [
+    "Atmos energy"
+  ],
+  "cox.com": [
+    "Cox"
+  ],
+  "entergy.com": [
+    "Entergy"
+  ],
+  "rouses.com": [
+    "Rouses"
+  ],
+  "winndixie.com": [
+    "Winn-Dixie"
+  ],
+  "smoothieking.com": [
+    "Smoothie King"
+  ],
+  "oldnavy.com": [
+    "Old Navy"
+  ],
+  "weightwatchers.com": [
+    "Weight watchers"
+  ],
+  "redbox.com": [
+    "RedBox"
+  ],
+  "mrcooper.com": [
+    "Mr cooper"
+  ],
+  "american-eagle.com": [
+    "American Eagle"
+  ],
+  "ford.com": [
+    "Ford motor credit"
+  ],
+  "scholastic.com": [
+    "Scholastic"
+  ],
+  "apple.com": [
+    "Apple"
+  ],
+  "apple-music": [
+    "Apple Music"
+  ],
+  "lego": [
+    "LEGO"
+  ],
+  "salt-and-straw": [
+    "Salt & Straw"
+  ],
+  "verizon": [
+    "Cell Phone"
+  ],
+  "mms": [
+    "M&Ms"
+  ],
+  "labcorp.com": [
+    "Lab Corp"
+  ],
+  "regions.com": [
+    "Regions"
+  ],
+  "tonies.com": [
+    "Tonies"
+  ],
+  "tubbytodd.com": [
+    "Tubby Todd"
+  ],
+  "lovevery.com": [
+    "Lovevery"
+  ],
+  "loanDepot.com": [
+    "Loandepot"
+  ],
+  "teacherspayteachers.com": [
+    "Tpt"
+  ],
+  "hiya.com": [
+    "Hiya"
+  ],
+  "wholefoodsmarket.com": [
+    "Whole Foods Market"
+  ],
+  "bluebottlecoffee.com": [
+    "Blue Bottle Coffee"
+  ],
+  "spotify.com": [
+    "Spotify"
+  ],
+  "sweetgreen.com": [
+    "Sweetgreen"
+  ],
+  "freddys.com": [
+    "Freddy's",
+    "Freddys",
+    "Freddy's Frozen Custard & Steakburgers"
+  ],
+  "walk-ons.com": [
+    "Walk On’s"
+  ],
+  "usps.com": [
+    "Post Office"
+  ],
+  "hookedonphonics.com": [
+    "Hooked On Phonics"
+  ],
+  "jerseymikes.com": [
+    "Jersey Mike's"
+  ],
+  "3d-pizza": [
+    "Pizza"
+  ],
+  "3d-popcorn": [
+    "Popcorn"
+  ],
+  "3d-gas-station": [
+    "Gas Station",
+    "Gas"
+  ],
+  "3d-house-cleaning": [
+    "House Cleaning"
+  ],
+  "3d-movie-tickets": [
+    "Movie Tickets"
+  ],
+  "3d-food": [
+    "Food",
+    "Eating Out",
+    "Restaurant"
+  ],
+  "3d-grass-cutting": [
+    "Grass Cutting"
+  ],
+  "3d-doctor": [
+    "Doctor",
+    "Urgent Care",
+    "Hospital"
+  ],
+  "3d-medicine": [
+    "Medicine"
+  ],
+  "3d-health-insurance": [
+    "Health Insurance"
+  ],
+  "3d-house-note": [
+    "House Note"
+  ],
+  "3d-water-bill": [
+    "Water Bill"
+  ],
+  "3d-envelope-transfer": [
+    "Envelope Transfer",
+    "Transfer"
+  ],
+  "3d-groceries": [
+    "Groceries",
+    "Grocery"
+  ],
+  "3d-car-insurance": [
+    "Car Insurance",
+    "Auto Insurance"
+  ],
+  "3d-life-insurance": [
+    "Life Insurance"
+  ],
+  "3d-babysitting": [
+    "Babysitting"
+  ],
+  "3d-therapy": [
+    "Therapy"
+  ],
+  "3d-car-wash": [
+    "Car Wash"
+  ],
+  "3d-donuts": [
+    "Donuts"
+  ],
+  "3d-ice-cream": [
+    "Ice Cream"
+  ],
+  "3d-baby-care": [
+    "Diapers"
+  ],
+  "3d-car-care": [
+    "Oil Change"
+  ],
+  "3d-dentist": [
+    "Dentist"
+  ],
+  "3d-savings": [
+    "Savings",
+    "Retirement",
+    "Investing",
+    "Emergency Fund"
+  ],
+  "3d-gift": [
+    "Gift",
+    "Gifts",
+    "Birthday Gift"
+  ],
+  "3d-school": [
+    "School",
+    "Tutoring"
+  ],
+  "3d-travel": [
+    "Travel",
+    "Vacation",
+    "Hotel"
+  ],
+  "3d-parking": [
+    "Parking"
+  ],
+  "3d-refund": [
+    "Refund",
+    "Return"
+  ],
+  "3d-garbage": [
+    "Garbage"
+  ],
+  "3d-clothes": [
+    "Clothes"
+  ],
+  "3d-donation": [
+    "Donation"
+  ],
+  "3d-coffee": [
+    "Coffee"
+  ],
+  "3d-work": [
+    "Work",
+    "Paycheck"
+  ],
+  "3d-entertainment": [
+    "Entertainment"
+  ],
+  "3d-pressure-wash": [
+    "Pressure Wash"
+  ],
+  "3d-medical-bills": [
+    "Medical Bills"
+  ],
+  "3d-termite": [
+    "Termite"
+  ],
+  "3d-snacks": [
+    "Snacks"
+  ],
+  "3d-chicken": [
+    "Chicken"
+  ],
+  "3d-hot-dogs": [
+    "Hot Dogs"
+  ],
+  "3d-rental-car": [
+    "Rental Car"
+  ],
+  "3d-locker": [
+    "Locker"
+  ],
+  "3d-formula": [
+    "Formula"
+  ]
+}

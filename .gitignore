@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.env*
+!.env.example
+*.tsbuildinfo
+artifacts/
+.private/
+.DS_Store
+.local-access-password
+wrangler.production.jsonc
+*.csv
+*.sqlite
+*.db
+*.db-shm
+*.db-wal

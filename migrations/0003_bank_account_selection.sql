@@ -1,0 +1,4 @@
+ALTER TABLE connections ADD COLUMN connected_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE connections ADD COLUMN connected_on TEXT NOT NULL DEFAULT '';
+ALTER TABLE connections ADD COLUMN selected_accounts TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE connections ADD COLUMN enabled INTEGER NOT NULL DEFAULT 0;
