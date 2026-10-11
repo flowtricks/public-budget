@@ -651,6 +651,13 @@ async function syncConnection(env: Env, c: Connection) {
     throw new Error(
       "Bank history is still preparing. Retry with a smaller initial history window.",
     );
+  if (!added.length && !removed.length) {
+    await selectionUnchanged();
+    await env.DB.prepare("UPDATE connections SET cursor=?,backfill_day=NULL WHERE id=?")
+      .bind(cursor || null, c.id)
+      .run();
+    return;
+  }
   const accounts = new Map<string, CardAccount>();
   if (added.length) {
     try {

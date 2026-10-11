@@ -15,8 +15,12 @@ let state: State;
 let connection: any;
 let updates: any;
 let cursor: string | null = null;
+let stateReads = 0;
 vi.mock("../worker/store", () => ({
-  readState: async () => state,
+  readState: async () => {
+    stateReads++;
+    return state;
+  },
   commit: async (_db: any, op: any) => {
     state = applyOperation(state, op);
     return { revision: state.revision };
@@ -55,6 +59,7 @@ const env: any = {
   PLAID_ENV: "sandbox",
 };
 beforeEach(async () => {
+  stateReads = 0;
   state = emptyState("test");
   state = applyOperation(
     state,
@@ -127,6 +132,11 @@ async function sync() {
   await syncAll(env);
 }
 describe("bank reconciliation", () => {
+  it("does not load the full budget when Plaid has no transaction changes", async () => {
+    await sync();
+    expect(stateReads).toBe(0);
+    expect(cursor).toBe("cursor1");
+  });
   it("ignores other accounts and transactions made before connection", async () => {
     updates.added = [
       raw({ transaction_id: "business", account_id: "business-card" }),
