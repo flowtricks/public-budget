@@ -10,7 +10,6 @@ import {
   envelopeRunningBalances,
   type Transaction,
 } from "../shared/model";
-import { AUTOMATICALLY_ADDED_TAG } from "../shared/automatic-import";
 
 function fixture() {
   const state = demoState();
@@ -39,11 +38,6 @@ function fixture() {
     id: "unallocated",
     type: "income",
     allocations: [],
-  };
-  state.records.review = {
-    ...transaction,
-    id: "review",
-    needsReview: "Choose an envelope",
   };
   state.records.pending = { ...transaction, id: "pending", pending: true };
   return state;
@@ -94,7 +88,7 @@ describe("cached budget history", () => {
       filterTransactions(index, null, "all", "nonexistent merchant"),
     ).toHaveLength(0);
   });
-  it("keeps deleted, excluded, pending, and review filters distinct", () => {
+  it("keeps deleted, excluded, pending, and unallocated filters distinct", () => {
     const index = createBudgetIndex(fixture());
     expect(
       filterTransactions(index, null, "deleted", "Historic merchant").map(
@@ -123,30 +117,10 @@ describe("cached budget history", () => {
       ),
     ).toEqual(["pending"]);
     expect(
-      filterTransactions(index, null, "review", "Historic merchant")
+      filterTransactions(index, null, "unallocated", "Historic merchant")
         .map((t) => t.id)
         .sort(),
-    ).toEqual(["review", "unallocated"]);
-  });
-  it("counts unapproved bank imports as reviews even without a review reason", () => {
-    const state = fixture();
-    const base = state.records["old-purchase"] as Transaction;
-    state.records["automatic-purchase"] = {
-      ...base,
-      id: "automatic-purchase",
-      source: "bank",
-      tags: [AUTOMATICALLY_ADDED_TAG],
-      bankOriginal: {},
-    };
-    const index = createBudgetIndex(state);
-    expect(index.reviews.map((transaction) => transaction.id)).toContain(
-      "automatic-purchase",
-    );
-    expect(
-      filterTransactions(index, null, "review", "").map((transaction) =>
-        transaction.id,
-      ),
-    ).toContain("automatic-purchase");
+    ).toEqual(["unallocated"]);
   });
   it("matches any checked tag while retaining the text and envelope filters", () => {
     const state = fixture();

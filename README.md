@@ -99,6 +99,18 @@ For a small, simple CSV, **Settings → Your data → Choose a CSV file** also o
 
 The example schedules a bank check every 10 minutes and enables Transactions Refresh. Plaid can limit frequent requests, and moving to a paid plan changes billing. If you do not want this behavior, set `PLAID_REFRESH_ENABLED` to `"false"` and change or remove the cron in your private config before deploying.
 
+## Updating an existing installation
+
+Pull the latest `main` branch into your fork, then update **your own** Cloudflare deployment:
+
+```sh
+npm ci
+npx wrangler d1 migrations apply DB --remote --config wrangler.production.jsonc
+npm run deploy
+```
+
+Keep your existing private `wrangler.production.jsonc`, Worker secrets, and D1 database. Do not create a replacement database or rerun the Goodbudget import for an update. After deployment, open **Settings → General → Get updates** in the app to load the new client. Bank imports now use the envelope most often used for a merchant. Matching bank and manual purchases both count toward balances by default; older matching purchases that were automatically excluded are included again when the app opens.
+
 ## Privacy and publishing checklist
 
 - This repository starts with no real budget, account number, bank token, password, or CSV. Demo entries are fictitious.

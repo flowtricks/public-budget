@@ -8,6 +8,7 @@ import {
   cents,
   transactionPatches,
   defaultEnvelope,
+  isLegacyDuplicateExclusion,
   EnvelopeSchema,
   type State,
   type Envelope,
@@ -19,7 +20,6 @@ import {
   goodbudgetPreview,
   guessMapping,
 } from "../src/lib/csv";
-import { AUTOMATICALLY_ADDED_TAG } from "../shared/automatic-import";
 const env = (
   id: string,
   opening = 0,
@@ -237,7 +237,76 @@ describe("budget ledger", () => {
     expect(defaultEnvelope(s, "Target")).toBe("groceries");
     expect(defaultEnvelope(s, "New merchant")).toBe("household");
   });
-  it("uses the latest eligible expense even when it did not create a merchant rule", () => {
+  it("uses a saved merchant rule before a newer miscategorized purchase", () => {
+    let s = start();
+    const chosen = tx({
+      payee: "McDonald's",
+      date: "2026-10-01",
+      allocations: [{ envelopeId: "groceries", amount: -857 }],
+    });
+    s = edit(s, transactionPatches(s, chosen));
+    s = edit(s, [
+      tx({
+        payee: "McDonald's",
+        date: "2026-10-02",
+        source: "import",
+        allocations: [{ envelopeId: "savings", amount: -857 }],
+      }),
+    ]);
+    expect(defaultEnvelope(s, "McDonald's")).toBe("groceries");
+  });
+  it("uses the most common envelope even when the latest choice and rule differ", () => {
+    let s = start();
+    s = edit(s, [
+      tx({
+        payee: "McDonald's",
+        date: "2026-09-01",
+        source: "manual",
+        allocations: [{ envelopeId: "groceries", amount: -857 }],
+      }),
+      tx({
+        payee: "MCDONALD'S",
+        date: "2026-09-02",
+        source: "import",
+        allocations: [{ envelopeId: "groceries", amount: -857 }],
+      }),
+      tx({
+        payee: "McDonald's",
+        date: "2026-10-07",
+        source: "bank",
+        allocations: [{ envelopeId: "savings", amount: -857 }],
+      }),
+      {
+        id: "rule:mcdonald's",
+        kind: "rule",
+        version: 0,
+        merchant: "mcdonald's",
+        envelopeId: "savings",
+      },
+    ]);
+    expect(defaultEnvelope(s, "mcdonald's")).toBe("groceries");
+  });
+  it("moves an existing bank expense to its newly selected envelope", () => {
+    let s = start();
+    const original = tx({
+      source: "bank",
+      bankOriginal: { payee: "Target" },
+      allocations: [{ envelopeId: "groceries", amount: -857 }],
+    });
+    s = edit(s, [original]);
+    const changed = {
+      ...(s.records[original.id] as Transaction),
+      allocations: [{ envelopeId: "household", amount: -857 }],
+      bankOriginal: { payee: "Target", edited: true },
+    };
+    s = edit(s, transactionPatches(s, changed));
+    expect((s.records[original.id] as Transaction).allocations).toEqual([
+      { envelopeId: "household", amount: -857 },
+    ]);
+    expect(balances(s).groceries).toBe(10000);
+    expect(balances(s).household).toBe(4143);
+  });
+  it("keeps a saved merchant choice when a newer expense did not change the rule", () => {
     let s = start();
     const older = tx({
       payee: "Wal Mart",
@@ -252,7 +321,7 @@ describe("budget ledger", () => {
       allocations: [{ envelopeId: "savings", amount: -857 }],
     });
     s = edit(s, [latest]);
-    expect(defaultEnvelope(s, "WAL MART")).toBe("savings");
+    expect(defaultEnvelope(s, "WAL MART")).toBe("groceries");
     s = edit(s, [
       tx({
         payee: "Wal Mart",
@@ -261,9 +330,9 @@ describe("budget ledger", () => {
         allocations: [{ envelopeId: "household", amount: -857 }],
       }),
     ]);
-    expect(defaultEnvelope(s, "Wal Mart")).toBe("savings");
+    expect(defaultEnvelope(s, "Wal Mart")).toBe("groceries");
   });
-  it("does not let an unapproved bank import replace a chosen envelope", () => {
+  it("uses the latest bank purchase for the merchant's envelope", () => {
     let s = start();
     const chosen = tx({
       payee: "Target",
@@ -276,12 +345,12 @@ describe("budget ledger", () => {
         payee: "Target",
         date: "2026-10-06",
         source: "bank",
-        tags: [AUTOMATICALLY_ADDED_TAG],
+        tags: [],
         bankOriginal: { payee: "Target" },
         allocations: [{ envelopeId: "household", amount: -857 }],
       }),
     ]);
-    expect(defaultEnvelope(s, "Target")).toBe("groceries");
+    expect(defaultEnvelope(s, "Target")).toBe("household");
   });
   it("note edits do not overwrite a newer merchant choice", () => {
     let s = start();
@@ -367,19 +436,32 @@ describe("CSV safety and recovery", () => {
   });
 });
 
-it("flags an offline purchase if its matching bank transaction arrived first", async () => {
-  const { reconcilePotentialDuplicates } = await import("../shared/model");
+it("counts an offline purchase even when a matching bank transaction arrived first", () => {
   let s = start();
   const bank = tx({ source: "bank", sourceId: "bank123" });
   s = edit(s, [bank]);
   const local = tx();
-  const op = reconcilePotentialDuplicates(
-    s,
-    makeOperation(s, [local], "phone", "Offline purchase"),
-  );
-  const next = applyOperation(s, op);
-  expect((next.records[local.id] as Transaction).excluded).toBe(true);
-  expect(balances(next)).toEqual(balances(s));
+  const next = edit(s, [local]);
+  expect((next.records[local.id] as Transaction).excluded).toBe(false);
+  expect(balances(next).groceries).toBe(balances(s).groceries - 532);
+  expect(balances(next).household).toBe(balances(s).household - 325);
+});
+
+it("recognizes only duplicate exclusions from the old review flow", () => {
+  expect(
+    isLegacyDuplicateExclusion(
+      tx({
+        excluded: true,
+        needsReview:
+          "Possible duplicate of Target on 2026-10-06. Excluded until you review.",
+      }),
+    ),
+  ).toBe(true);
+  expect(
+    isLegacyDuplicateExclusion(
+      tx({ excluded: true, needsReview: "Bank transfer excluded." }),
+    ),
+  ).toBe(false);
 });
 
 describe("envelope activity", () => {

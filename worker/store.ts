@@ -6,7 +6,6 @@ import {
   type Operation,
   type BudgetRecord,
   Conflict,
-  reconcilePotentialDuplicates,
 } from "../shared/model";
 import { notifyLive } from "./live";
 export interface Env {
@@ -47,7 +46,6 @@ export async function commit(
       .first<{ revision: number }>();
     if (receipt) return { revision: receipt.revision, duplicate: true };
     const before = await readState(db);
-    op = reconcilePotentialDuplicates(before, op);
     const after = applyOperation(before, op);
     const changed = Object.values(after.records).filter(
       (r) => r !== before.records[r.id],

@@ -47,7 +47,6 @@ import {
   WifiOff,
   Leaf,
   Download,
-  Trash2,
 } from "lucide-react";
 import * as store from "./lib/store";
 import {
@@ -59,11 +58,11 @@ import {
   filterTransactions,
   indexedRunningBalances,
   normalizeTag,
-  transactionNeedsReview,
 } from "./lib/budget-index";
 import {
   moneyText,
   today,
+  isLegacyDuplicateExclusion,
   type Transaction,
   type Envelope,
 } from "../shared/model";
@@ -83,11 +82,7 @@ import RecordComparison from "./components/RecordComparison";
 import SettingsPanel from "./components/SettingsPanel";
 import { Modal } from "./components/ui";
 import { exportCSV, download } from "./lib/csv";
-import {
-  isAutomaticTag,
-  isUnapprovedAutomatic,
-  unapprovedDeletionPatches,
-} from "../shared/automatic-import";
+import { isAutomaticTag } from "../shared/automatic-import";
 const headerVariants = {
   enter: (direction: number) => ({
     opacity: 0,
@@ -173,22 +168,44 @@ export default function App() {
   const [form, setForm] = useState<Transaction | "new" | null>(null);
   const [manage, setManage] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
-  const [bulkDeleteBusy, setBulkDeleteBusy] = useState(false);
-  const [bulkDeleteError, setBulkDeleteError] = useState("");
   const [reauth, setReauth] = useState(false);
   const [toast, setToast] = useState("");
+  const restoringDuplicates = useRef(false);
   const [paceNow, setPaceNow] = useState(() => new Date());
   const index = useMemo(
     () => (snap.view ? createBudgetIndex(snap.view) : undefined),
     [snap.view],
   );
+  useEffect(() => {
+    if (!snap.view || restoringDuplicates.current) return;
+    const matches = Object.values(snap.view.records).filter(
+      (record): record is Transaction =>
+        record.kind === "transaction" && isLegacyDuplicateExclusion(record),
+    );
+    if (!matches.length) return;
+    restoringDuplicates.current = true;
+    void store
+      .saveMany(
+        matches.map((transaction) => ({
+          ...transaction,
+          excluded: false,
+          needsReview: undefined,
+          updatedAt: new Date().toISOString(),
+        })),
+        "Include previously excluded matching transactions",
+      )
+      .catch(() => setToast("Could not include older matching transactions"))
+      .finally(() => {
+        restoringDuplicates.current = false;
+      });
+  }, [snap.view]);
   const tagOptions = useMemo(() => {
     const names = new Map<string, string>();
     for (const transaction of index?.everyTransaction || [])
       for (const tag of transaction.tags) {
         const key = normalizeTag(tag);
-        if (key && !names.has(key)) names.set(key, tag.trim());
+        if (key && !isAutomaticTag(tag) && !names.has(key))
+          names.set(key, tag.trim());
       }
     return [...names]
       .map(([key, label]) => ({ key, label }))
@@ -206,10 +223,6 @@ export default function App() {
           )
         : [],
     [index, selectedEnvelope, filter, query, selectedTags],
-  );
-  const unapprovedAutomatic = useMemo(
-    () => index?.everyTransaction.filter(isUnapprovedAutomatic) || [],
-    [index],
   );
   const runningBalances = useMemo(
     () =>
@@ -248,15 +261,10 @@ export default function App() {
   useLayoutEffect(() => {
     // Settings includes delayed autosaves, imports, and account setup flows.
     setAppUpdateBlocked(
-      !!form ||
-        manage ||
-        reauth ||
-        syncOpen ||
-        bulkDeleteOpen ||
-        tab === "settings",
+      !!form || manage || reauth || syncOpen || tab === "settings",
     );
     return () => setAppUpdateBlocked(true);
-  }, [form, manage, reauth, syncOpen, bulkDeleteOpen, tab]);
+  }, [form, manage, reauth, syncOpen, tab]);
   useEffect(() => {
     if (toast) {
       const t = setTimeout(() => setToast(""), 3500);
@@ -310,8 +318,7 @@ export default function App() {
     duration: reducedMotion ? 0 : 0.22,
     ease: [0.22, 1, 0.36, 1] as const,
   };
-  const { active, bs, total, unallocated, reviews, pending, envelopeGroups } =
-    index!;
+  const { active, bs, total, unallocated, pending, envelopeGroups } = index!;
   const dirty = new Set(
     snap.doc?.queue.flatMap((i) => i.op.patches.map((p) => p.record.id)),
   );
@@ -414,41 +421,10 @@ export default function App() {
   ) : (
     <Cloud size={14} />
   );
-  async function deleteUnapprovedAutomatic() {
-    setBulkDeleteBusy(true);
-    setBulkDeleteError("");
-    try {
-      const current = store.getSnapshot().view;
-      if (!current)
-        throw new Error("Open the budget before deleting transactions.");
-      const patches = unapprovedDeletionPatches(
-        current,
-        new Date().toISOString(),
-      );
-      if (patches.length)
-        await store.saveMany(
-          patches,
-          `Delete ${patches.length} unapproved automatic transactions`,
-        );
-      setBulkDeleteOpen(false);
-      setToast(
-        `${patches.length} unapproved automatic transaction${patches.length === 1 ? "" : "s"} deleted`,
-      );
-    } catch (error) {
-      setBulkDeleteError(
-        error instanceof Error
-          ? error.message
-          : "Could not delete transactions.",
-      );
-    } finally {
-      setBulkDeleteBusy(false);
-    }
-  }
   function txRow(t: Transaction) {
     const display = transactionDisplay(state, t, selected?.id);
     const title = transactionTitle(state, t);
     const firstUserTag = t.tags.find((tag) => !isAutomaticTag(tag));
-    const needsReview = transactionNeedsReview(t);
     return (
       <button className="transaction-row" key={t.id} onClick={() => setForm(t)}>
         <PayeeLogo name={title} eager />
@@ -460,10 +436,7 @@ export default function App() {
           </span>
         </div>
         <div className="transaction-flags">
-          {needsReview && (
-            <span className="badge review-badge">Review</span>
-          )}
-          {t.pending && !needsReview && <span className="badge">Pending</span>}
+          {t.pending && <span className="badge">Pending</span>}
           {dirty.has(t.id) && <Clock aria-label="Not synced" size={13} />}
         </div>
         <div
@@ -497,7 +470,11 @@ export default function App() {
       <header className="budget-header">
         <div className="budget-header-inner">
           <div className="header-leading">
-            <AnimatePresence initial={false} custom={navigation.direction} mode="popLayout">
+            <AnimatePresence
+              initial={false}
+              custom={navigation.direction}
+              mode="popLayout"
+            >
               {selected ? (
                 <motion.button
                   key="back"
@@ -558,7 +535,11 @@ export default function App() {
             </AnimatePresence>
           </h1>
           <div className="header-trailing">
-            <AnimatePresence initial={false} custom={navigation.direction} mode="popLayout">
+            <AnimatePresence
+              initial={false}
+              custom={navigation.direction}
+              mode="popLayout"
+            >
               {selected && (
                 <motion.button
                   key="edit-envelope"
@@ -580,7 +561,11 @@ export default function App() {
               aria-label="Create transaction"
               onClick={() => (active.length ? setForm("new") : setManage(true))}
             >
-              <AnimatePresence initial={false} custom={navigation.direction} mode="popLayout">
+              <AnimatePresence
+                initial={false}
+                custom={navigation.direction}
+                mode="popLayout"
+              >
                 <motion.span
                   key={headerKey}
                   className="compose-icon"
@@ -652,20 +637,19 @@ export default function App() {
                 )}
               </div>
             )}
-            {(unallocated.length > 0 || reviews.length > 0) && (
+            {unallocated.length > 0 && (
               <button
                 className="attention-bar"
                 onClick={() => {
                   changeTab("transactions");
-                  setFilter("review");
+                  setFilter("unallocated");
                   setSearchOpen(true);
                 }}
               >
                 <AlertCircle size={16} />
                 <span>
-                  {unallocated.length
-                    ? `${unallocated.length} income payment${unallocated.length === 1 ? "" : "s"} to distribute`
-                    : `${reviews.length} transactions to review`}
+                  {unallocated.length} income payment
+                  {unallocated.length === 1 ? "" : "s"} to distribute
                 </span>
                 <ChevronRight size={16} />
               </button>
@@ -753,15 +737,11 @@ export default function App() {
                           { value: "all", label: "All transactions" },
                           { value: "expense", label: "Expenses" },
                           { value: "income", label: "Income" },
-                          {
-                            value: "automatic",
-                            label: `Automatically added (${unapprovedAutomatic.length})`,
-                          },
+                          { value: "unallocated", label: "Unallocated income" },
                           {
                             value: "pending",
                             label: `Pending (${pending.length})`,
                           },
-                          { value: "review", label: "Needs review" },
                           {
                             value: "including-excluded",
                             label: "Include excluded",
@@ -777,20 +757,6 @@ export default function App() {
                     />
                   </div>
                 )}
-                {filter === "automatic" &&
-                  !selected &&
-                  unapprovedAutomatic.length > 0 && (
-                    <button
-                      className="button danger-button bulk-delete-button"
-                      onClick={() => {
-                        setBulkDeleteError("");
-                        setBulkDeleteOpen(true);
-                      }}
-                    >
-                      <Trash2 size={16} /> Delete all{" "}
-                      {unapprovedAutomatic.length} unapproved imports
-                    </button>
-                  )}
                 <TransactionFeed
                   key={JSON.stringify([
                     tab,
@@ -867,48 +833,6 @@ export default function App() {
             onClose={() => setForm(null)}
             onSaved={setToast}
           />
-        )}
-        {bulkDeleteOpen && (
-          <Modal
-            key="delete-unapproved-imports"
-            title="Delete unapproved imports?"
-            subtitle={`${unapprovedAutomatic.length} automatically added transaction${unapprovedAutomatic.length === 1 ? "" : "s"} have not been edited or approved.`}
-            onClose={() => {
-              if (!bulkDeleteBusy) setBulkDeleteOpen(false);
-            }}
-          >
-            <div className="form-body">
-              <p>
-                This deletes all unapproved bank imports across every envelope,
-                including excluded transactions. Edited transactions stay in
-                your budget. Deleted transactions can be restored from the
-                Deleted transactions filter.
-              </p>
-              {bulkDeleteError && (
-                <p role="alert" className="error">
-                  {bulkDeleteError}
-                </p>
-              )}
-              <div className="button-row">
-                <button
-                  className="button danger-button"
-                  disabled={bulkDeleteBusy || unapprovedAutomatic.length === 0}
-                  onClick={() => void deleteUnapprovedAutomatic()}
-                >
-                  {bulkDeleteBusy
-                    ? "Deleting…"
-                    : `Delete ${unapprovedAutomatic.length} transactions`}
-                </button>
-                <button
-                  className="text-button"
-                  disabled={bulkDeleteBusy}
-                  onClick={() => setBulkDeleteOpen(false)}
-                >
-                  Keep them
-                </button>
-              </div>
-            </div>
-          </Modal>
         )}
         {manage && (
           <EnvelopeManager

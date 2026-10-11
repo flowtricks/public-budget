@@ -27,7 +27,8 @@
     "Disney+"
   ],
   "disney.com": [
-    "Disney"
+    "Disney",
+    "Walt Disney Travel Company"
   ],
   "wendys.com": [
     "Wendy's"
@@ -80,7 +81,9 @@
     "Uber"
   ],
   "cvs.com": [
-    "CVS"
+    "CVS",
+    "CVS Pharmacy",
+    "CVS/pharmacy"
   ],
   "familydollar.com": [
     "Family Dollar"
@@ -512,5 +515,12 @@
   ],
   "3d-formula": [
     "Formula"
+  ],
+  "amwater.com": [
+    "American Water"
+  ],
+  "wm.com": [
+    "Waste Management",
+    "WM"
   ]
 }

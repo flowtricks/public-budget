@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AppUpdates } from "../src/lib/app-updates";
+import { AppUpdates, getAppUpdates } from "../src/lib/app-updates";
 
 let win: EventTarget;
 let doc: EventTarget & {
@@ -156,6 +156,51 @@ describe("automatic app updates", () => {
     updates.registered({ update } as unknown as ServiceWorkerRegistration);
     await vi.advanceTimersByTimeAsync(300_000);
     expect(update).toHaveBeenCalledTimes(2);
+    expect(reload).not.toHaveBeenCalled();
+  });
+});
+
+describe("manual app updates", () => {
+  it("checks for a new worker and reloads even when no update is found", async () => {
+    const reload = vi.fn();
+    const update = vi.fn().mockResolvedValue(undefined);
+    const worker = Object.assign(new EventTarget(), {
+      controller: {},
+      getRegistration: vi.fn().mockResolvedValue({
+        update,
+        installing: null,
+        waiting: null,
+      }),
+    });
+    vi.stubGlobal("navigator", { onLine: true, serviceWorker: worker });
+    await getAppUpdates(reload);
+    expect(update).toHaveBeenCalledOnce();
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("waits for an installing worker to control the page", async () => {
+    const reload = vi.fn();
+    const update = vi.fn().mockResolvedValue(undefined);
+    const worker = Object.assign(new EventTarget(), {
+      controller: {},
+      getRegistration: vi.fn().mockResolvedValue({ update, installing: {} }),
+    });
+    vi.stubGlobal("navigator", { onLine: true, serviceWorker: worker });
+    Object.assign(win, { setTimeout, clearTimeout });
+    const checking = getAppUpdates(reload);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(reload).not.toHaveBeenCalled();
+    worker.controller = {};
+    worker.dispatchEvent(new Event("controllerchange"));
+    await checking;
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the current page when offline", async () => {
+    const reload = vi.fn();
+    vi.stubGlobal("navigator", { onLine: false });
+    await expect(getAppUpdates(reload)).rejects.toThrow(/Connect to the internet/);
     expect(reload).not.toHaveBeenCalled();
   });
 });

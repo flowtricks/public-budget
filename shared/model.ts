@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { isUnapprovedAutomatic } from "./automatic-import";
 const id = z
   .string()
   .min(1)
@@ -131,7 +130,7 @@ export const initialSettings: Settings = {
   id: "settings",
   kind: "settings",
   version: 0,
-  name: "My household",
+  name: "Household budget",
   fallbackId: "",
   currency: "USD",
   timezone: "America/Chicago",
@@ -154,30 +153,70 @@ export const transactions = (s: State) =>
         b.updatedAt.localeCompare(a.updatedAt) ||
         a.id.localeCompare(b.id),
     );
+export const isLegacyDuplicateExclusion = (transaction: Transaction) =>
+  transaction.excluded &&
+  /^(Possible duplicate of |A matching bank transaction arrived )/.test(
+    transaction.needsReview || "",
+  );
 export const settings = (s: State) =>
   (s.records.settings as Settings) || initialSettings;
 export const merchantKey = (name: string) =>
   name.trim().toLocaleLowerCase().replace(/\s+/g, " ");
 export const ruleId = (name: string) => "rule:" + merchantKey(name);
+export function eligibleExpenseEnvelope(s: State, t: Transaction) {
+  if (
+    t.type !== "expense" ||
+    t.deleted ||
+    t.excluded ||
+    t.allocations.length !== 1 ||
+    t.allocations[0].amount >= 0
+  )
+    return null;
+  const id = t.allocations[0].envelopeId;
+  const envelope = s.records[id];
+  return envelope?.kind === "envelope" && !envelope.archived ? id : null;
+}
+export function popularEnvelope(
+  counts: Map<string, number>,
+  savedChoice: string | undefined,
+  latestChoice: string | undefined,
+) {
+  let winner: string | undefined;
+  let highest = 0;
+  for (const [id, count] of counts) {
+    if (count <= 0) continue;
+    if (
+      count > highest ||
+      (count === highest && id === savedChoice) ||
+      (count === highest && winner !== savedChoice && id === latestChoice)
+    ) {
+      winner = id;
+      highest = count;
+    }
+  }
+  return winner || savedChoice;
+}
 export function defaultEnvelope(s: State, payee: string) {
   const key = merchantKey(payee);
-  const recent = transactions(s).find((t) => {
-    if (
-      t.type !== "expense" ||
-      t.deleted ||
-      t.excluded ||
-      isUnapprovedAutomatic(t) ||
-      merchantKey(t.payee) !== key ||
-      t.allocations.length !== 1 ||
-      t.allocations[0].amount >= 0
-    )
-      return false;
-    const envelope = s.records[t.allocations[0].envelopeId];
-    return envelope?.kind === "envelope" && !envelope.archived;
-  });
-  if (recent) return recent.allocations[0].envelopeId;
   const rule = s.records[ruleId(payee)];
-  const id = rule?.kind === "rule" ? rule.envelopeId : settings(s).fallbackId;
+  const saved =
+    rule?.kind === "rule" &&
+    s.records[rule.envelopeId]?.kind === "envelope" &&
+    !(s.records[rule.envelopeId] as Envelope).archived
+      ? rule.envelopeId
+      : undefined;
+  const counts = new Map<string, number>();
+  let latest: string | undefined;
+  for (const t of transactions(s)) {
+    if (merchantKey(t.payee) !== key) continue;
+    const id = eligibleExpenseEnvelope(s, t);
+    if (!id) continue;
+    latest ||= id;
+    counts.set(id, (counts.get(id) || 0) + 1);
+  }
+  const popular = popularEnvelope(counts, saved, latest);
+  if (popular) return popular;
+  const id = settings(s).fallbackId;
   return s.records[id]?.kind === "envelope" &&
     !(s.records[id] as Envelope).archived
     ? id
@@ -436,45 +475,4 @@ export function transactionPatches(
     });
   }
   return result;
-}
-
-/** A manually queued purchase may reach D1 after the corresponding bank update. */
-export function reconcilePotentialDuplicates(
-  state: State,
-  op: Operation,
-): Operation {
-  const bank = transactions(state).filter(
-    (t) => t.source === "bank" && !t.deleted && !t.excluded,
-  );
-  return {
-    ...op,
-    patches: op.patches.map((p) => {
-      const r = p.record;
-      if (
-        r.kind !== "transaction" ||
-        r.source === "bank" ||
-        r.deleted ||
-        r.excluded ||
-        state.records[r.id]
-      )
-        return p;
-      const match = bank.find(
-        (t) =>
-          t.type === r.type &&
-          t.amount === r.amount &&
-          t.date === r.date &&
-          merchantKey(t.payee) === merchantKey(r.payee),
-      );
-      return match
-        ? {
-            ...p,
-            record: {
-              ...r,
-              excluded: true,
-              needsReview: `A matching bank transaction arrived while this purchase was saved locally. Review both ${r.payee} entries before including this one.`,
-            },
-          }
-        : p;
-    }),
-  };
 }

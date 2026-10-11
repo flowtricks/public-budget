@@ -9,11 +9,15 @@ describe("payee logos", () => {
     expect(payeeLogo("Wal Mart")).toBe(payeeLogo("Walmart"));
     expect(payeeLogo("Chick Fil A")).toBe(payeeLogo("Chick-fil-A"));
     expect(payeeLogo("Exxon Mobil")).toBe("/payee-logos/exxonmobil.com.svg");
+    expect(payeeLogo("Walt Disney Travel Company")).toBe(payeeLogo("Disney"));
+    expect(payeeLogo("CVS Pharmacy")).toBe(payeeLogo("CVS"));
   });
 
   it("uses bundled logos for public brands", () => {
     expect(payeeLogo("Subway")).toBe("/payee-logos/subway-choicemark.png");
     expect(payeeLogo("Protective Life")).toBe("/payee-logos/protective-life.png");
+    expect(payeeLogo("American Water")).toBe("/payee-logos/amwater.com.png");
+    expect(payeeLogo("Waste Management")).toBe("/payee-logos/wm.com.jpg");
   });
 
   it("falls back for unknown payees", () => {

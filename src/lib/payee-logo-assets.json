@@ -47,6 +47,7 @@
   "adobe.com": "adobe.com.png",
   "aliexpress": "aliexpress.webp",
   "amazon.com": "amazon.com.png",
+  "amwater.com": "amwater.com.png",
   "andys": "andys.webp",
   "apple-music": "apple-music.svg",
   "apple.com": "apple.com.png",
@@ -65,7 +66,7 @@
   "cox.com": "cox.com.png",
   "crocs.com": "crocs.com.png",
   "crumblcookies.com": "crumblcookies.com.png",
-  "cvs.com": "cvs.com.png",
+  "cvs.com": "cvs.com.svg",
   "dairyqueen.com": "dairyqueen.com.svg",
   "disney.com": "disney.com.png",
   "disneyplus.com": "disneyplus.com.png",
@@ -156,5 +157,6 @@
   "weightwatchers.com": "weightwatchers.com.png",
   "wendys.com": "wendys.com.png",
   "wholefoodsmarket.com": "wholefoodsmarket.com.png",
-  "wingstop": "wingstop.svg"
+  "wingstop": "wingstop.svg",
+  "wm.com": "wm.com.jpg"
 }

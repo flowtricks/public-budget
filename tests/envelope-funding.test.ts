@@ -87,10 +87,10 @@ describe("five-week envelope funding", () => {
 
 describe("projected envelope totals", () => {
   it("adds custom funding to the existing balance in cents", () => {
-    expect(projectedEnvelopeTotal(80000, "groceries", "1250.00")).toBe(205000);
-    expect(projectedEnvelopeTotal(80000, "groceries", "")).toBe(80000);
+    expect(projectedEnvelopeTotal(86203, "groceries", "1250.00")).toBe(211203);
+    expect(projectedEnvelopeTotal(86203, "groceries", "")).toBe(86203);
     expect(projectedEnvelopeTotal(-1000, "groceries", "25.50")).toBe(1550);
-    expect(projectedEnvelopeTotal(80000, "groceries", "not money")).toBeNull();
+    expect(projectedEnvelopeTotal(86203, "groceries", "not money")).toBeNull();
   });
 
   it("replaces a saved contribution when editing instead of counting it twice", () => {
@@ -99,21 +99,21 @@ describe("projected envelope totals", () => {
       deleted: false,
       excluded: false,
     } as Transaction;
-    expect(projectedEnvelopeTotal(90000, "groceries", "1250", previous)).toBe(
-      205000,
+    expect(projectedEnvelopeTotal(96203, "groceries", "1250", previous)).toBe(
+      211203,
     );
-    expect(projectedEnvelopeTotal(90000, "groceries", "100", previous)).toBe(
-      90000,
+    expect(projectedEnvelopeTotal(96203, "groceries", "100", previous)).toBe(
+      96203,
     );
     expect(
-      projectedEnvelopeTotal(90000, "groceries", "100", previous, true),
-    ).toBe(80000);
+      projectedEnvelopeTotal(96203, "groceries", "100", previous, true),
+    ).toBe(86203);
     expect(
-      projectedEnvelopeTotal(80000, "groceries", "100", {
+      projectedEnvelopeTotal(86203, "groceries", "100", {
         ...previous,
         excluded: true,
       }),
-    ).toBe(90000);
-    expect(projectedEnvelopeTotal(80000, "groceries", "-20")).toBe(78000);
+    ).toBe(96203);
+    expect(projectedEnvelopeTotal(86203, "groceries", "-20")).toBe(84203);
   });
 });

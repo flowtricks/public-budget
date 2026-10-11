@@ -49,7 +49,14 @@ export default function TagFilter({
       className="tag-filter"
       ref={root}
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+        // Clicking a label's text can briefly move focus to the document body.
+        // Let the outside pointer handler close the menu instead of doing it
+        // before the label has a chance to toggle its checkbox.
+        if (
+          event.relatedTarget &&
+          !event.currentTarget.contains(event.relatedTarget)
+        )
+          setOpen(false);
       }}
       onKeyDown={(event) => {
         if (event.key === "Escape" && open) {
@@ -83,7 +90,12 @@ export default function TagFilter({
               onChange={(event) => setSearch(event.target.value)}
             />
           </label>
-          <div ref={optionList} className="tag-filter-options" role="group" aria-label="Tags">
+          <div
+            ref={optionList}
+            className="tag-filter-options"
+            role="group"
+            aria-label="Tags"
+          >
             {matches.map((option) => (
               <label className="tag-filter-option" key={option.key}>
                 <input

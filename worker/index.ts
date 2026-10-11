@@ -285,8 +285,8 @@ export default {
   ) {
     ctx.waitUntil(
       (async () => {
-        await refreshAvailable(env);
         await syncAll(env);
+        await refreshAvailable(env);
       })(),
     );
   },

@@ -9,12 +9,12 @@ import {
   type Transaction,
 } from "../shared/model";
 import { encrypt } from "../worker/auth";
-import { AUTOMATICALLY_ADDED_TAG } from "../shared/automatic-import";
 import { cardFromTransaction } from "../shared/card";
 let state: State;
 let connection: any;
 let updates: any;
 let cursor: string | null = null;
+let commits = 0;
 let stateReads = 0;
 vi.mock("../worker/store", () => ({
   readState: async () => {
@@ -22,6 +22,7 @@ vi.mock("../worker/store", () => ({
     return state;
   },
   commit: async (_db: any, op: any) => {
+    commits++;
     state = applyOperation(state, op);
     return { revision: state.revision };
   },
@@ -30,7 +31,7 @@ const raw = (patch: any = {}) => ({
   transaction_id: "pending1",
   amount: 10,
   merchant_name: "Target",
-  date: "2025-04-11",
+  date: "2026-10-06",
   account_id: "card1",
   pending: true,
   personal_finance_category: { detailed: "GENERAL_MERCHANDISE_SUPERSTORES" },
@@ -59,6 +60,7 @@ const env: any = {
   PLAID_ENV: "sandbox",
 };
 beforeEach(async () => {
+  commits = 0;
   stateReads = 0;
   state = emptyState("test");
   state = applyOperation(
@@ -86,11 +88,11 @@ beforeEach(async () => {
   );
   connection = {
     id: "item1",
-    name: "Example bank",
+    name: "Chase test",
     provider: "plaid",
     enabled: 1,
-    connected_at: "2025-04-11T00:00:00.000Z",
-    connected_on: "2025-04-10",
+    connected_at: "2026-10-06T00:00:00.000Z",
+    connected_on: "2026-10-05",
     selected_accounts: '["card1"]',
     token: await encrypt("test-token", env.TOKEN_KEY),
     cursor: null,
@@ -135,12 +137,25 @@ describe("bank reconciliation", () => {
   it("does not load the full budget when Plaid has no transaction changes", async () => {
     await sync();
     expect(stateReads).toBe(0);
+    expect(commits).toBe(0);
+    expect(cursor).toBe("cursor1");
+  });
+  it("imports a page of transactions in bounded batches", async () => {
+    updates.added = Array.from({ length: 60 }, (_, index) =>
+      raw({
+        transaction_id: `charge-${index}`,
+        merchant_name: `Store ${index}`,
+      }),
+    );
+    await sync();
+    expect(transactions(state)).toHaveLength(60);
+    expect(commits).toBe(2);
     expect(cursor).toBe("cursor1");
   });
   it("ignores other accounts and transactions made before connection", async () => {
     updates.added = [
       raw({ transaction_id: "business", account_id: "business-card" }),
-      raw({ transaction_id: "old", authorized_date: "2025-04-09" }),
+      raw({ transaction_id: "old", authorized_date: "2026-10-04" }),
       raw({ transaction_id: "new" }),
     ];
     await sync();
@@ -153,35 +168,37 @@ describe("bank reconciliation", () => {
     await sync();
     expect(transactions(state)).toHaveLength(0);
   });
-  it("backfills the connection day's bank charge once and keeps its posted replacement", async () => {
-    connection.connected_at = "2025-04-12T10:30:00.000Z";
-    connection.connected_on = "2025-04-11";
+  it("backfills the connection day's Chase charge once and keeps its posted replacement", async () => {
+    connection.connected_at = "2026-10-07T04:17:37.000Z";
+    connection.connected_on = "2026-10-06";
     updates.added = [
       raw({
         transaction_id: "pending-gas",
-        merchant_name: "Sample Fuel",
-        authorized_date: "2025-04-12",
-        authorized_datetime: "2025-04-12T00:00:00Z",
-        date: "2025-04-12",
+        merchant_name: "ExxonMobil",
+        authorized_date: "2026-10-07",
+        authorized_datetime: "2026-10-07T00:00:00Z",
+        date: "2026-10-07",
       }),
     ];
     await sync();
     expect(transactions(state)).toHaveLength(0);
 
-    connection.backfill_day = "2025-04-12";
+    connection.backfill_day = "2026-10-07";
     await sync();
     expect(transactions(state)).toHaveLength(1);
-    expect(transactions(state)[0].bankOriginal?.backfilledOn).toBe("2025-04-12");
+    expect(transactions(state)[0].bankOriginal?.backfilledOn).toBe(
+      "2026-10-07",
+    );
     expect(connection.backfill_day).toBeNull();
 
     updates.added = [
       raw({
         transaction_id: "posted-gas",
         pending_transaction_id: "pending-gas",
-        merchant_name: "Sample Fuel",
-        authorized_date: "2025-04-12",
-        authorized_datetime: "2025-04-12T00:00:00Z",
-        date: "2025-04-14",
+        merchant_name: "ExxonMobil",
+        authorized_date: "2026-10-07",
+        authorized_datetime: "2026-10-07T00:00:00Z",
+        date: "2026-10-09",
         pending: false,
       }),
     ];
@@ -189,7 +206,9 @@ describe("bank reconciliation", () => {
     await sync();
     expect(transactions(state)).toHaveLength(1);
     expect(transactions(state)[0].sourceId).toBe("item1:posted-gas");
-    expect(transactions(state)[0].bankOriginal?.backfilledOn).toBe("2025-04-12");
+    expect(transactions(state)[0].bankOriginal?.backfilledOn).toBe(
+      "2026-10-07",
+    );
     expect(transactions(state)[0].deleted).toBe(false);
   });
   it("assigns a new card charge to the payee's last chosen envelope", async () => {
@@ -208,7 +227,7 @@ describe("bank reconciliation", () => {
       type: "expense",
       payee: "Target",
       amount: 500,
-      date: "2025-04-11",
+      date: "2026-10-06",
       allocations: [{ envelopeId: "groceries", amount: -500 }],
       note: "",
       tags: [],
@@ -216,24 +235,152 @@ describe("bank reconciliation", () => {
       deleted: false,
       excluded: false,
       source: "manual",
-      updatedAt: "2025-04-11T12:00:00.000Z",
+      updatedAt: "2026-10-06T12:00:00.000Z",
     };
     state = applyOperation(
       state,
       makeOperation(state, [groceries, prior], "phone", "Prior purchase"),
     );
-    updates.added = [raw({ date: "2025-04-12" })];
+    updates.added = [raw({ date: "2026-10-07" })];
     await sync();
     const imported = transactions(state).find((t) => t.source === "bank");
     expect(imported?.allocations).toEqual([
       { envelopeId: "groceries", amount: -1000 },
     ]);
-    expect(imported?.tags).toContain(AUTOMATICALLY_ADDED_TAG);
+    expect(imported?.tags).toEqual([]);
     expect(cardFromTransaction(imported)).toMatchObject({
       name: "Sapphire Preferred",
       mask: "1234",
       type: "credit",
     });
+  });
+  it("uses the saved merchant choice to break a usage tie", async () => {
+    const savings = {
+      ...state.records.food,
+      id: "savings",
+      version: 0,
+      name: "Savings",
+      opening: 0,
+      order: 1,
+    };
+    const prior: Transaction = {
+      id: "recent-mcdonalds",
+      kind: "transaction",
+      version: 0,
+      type: "expense",
+      payee: "McDonald's",
+      amount: 500,
+      date: "2026-10-07",
+      allocations: [{ envelopeId: "savings", amount: -500 }],
+      note: "",
+      tags: [],
+      pending: false,
+      deleted: false,
+      excluded: false,
+      source: "import",
+      updatedAt: "2026-10-07T12:00:00.000Z",
+    };
+    state = applyOperation(
+      state,
+      makeOperation(
+        state,
+        [
+          savings,
+          {
+            ...prior,
+            id: "older-mcdonalds",
+            source: "manual",
+            date: "2026-10-01",
+            allocations: [{ envelopeId: "food", amount: -500 }],
+          },
+          prior,
+          {
+            id: "rule:mcdonald's",
+            kind: "rule",
+            version: 0,
+            merchant: "mcdonald's",
+            envelopeId: "food",
+          },
+        ],
+        "phone",
+        "Prior choice",
+      ),
+    );
+    updates.added = [
+      raw({ transaction_id: "new-mcdonalds", merchant_name: "McDonald's" }),
+    ];
+    await sync();
+    expect(
+      transactions(state).find((t) => t.sourceId === "item1:new-mcdonalds")
+        ?.allocations,
+    ).toEqual([{ envelopeId: "food", amount: -1000 }]);
+  });
+  it("imports into the most common envelope across manual and imported purchases", async () => {
+    const savings = {
+      ...state.records.food,
+      id: "savings",
+      version: 0,
+      name: "Savings",
+      opening: 0,
+      order: 1,
+    };
+    const purchase: Transaction = {
+      id: "older-mcdonalds",
+      kind: "transaction",
+      version: 0,
+      type: "expense",
+      payee: "McDonald's",
+      amount: 500,
+      date: "2026-09-01",
+      allocations: [{ envelopeId: "food", amount: -500 }],
+      note: "",
+      tags: [],
+      pending: false,
+      deleted: false,
+      excluded: false,
+      source: "manual",
+      updatedAt: "2026-09-01T12:00:00.000Z",
+    };
+    state = applyOperation(
+      state,
+      makeOperation(
+        state,
+        [
+          savings,
+          purchase,
+          {
+            ...purchase,
+            id: "second-mcdonalds",
+            source: "import",
+            date: "2026-09-02",
+          },
+          {
+            ...purchase,
+            id: "latest-mcdonalds",
+            source: "bank",
+            date: "2026-10-07",
+            allocations: [{ envelopeId: "savings", amount: -500 }],
+          },
+          {
+            id: "rule:mcdonald's",
+            kind: "rule",
+            version: 0,
+            merchant: "mcdonald's",
+            envelopeId: "savings",
+          },
+        ],
+        "phone",
+        "Past purchases",
+      ),
+    );
+    updates.added = [
+      raw({ transaction_id: "new-mcdonalds", merchant_name: "McDonald's" }),
+    ];
+    await sync();
+    expect(
+      transactions(state).find((t) => t.sourceId === "item1:new-mcdonalds")
+        ?.allocations,
+    ).toEqual([{ envelopeId: "food", amount: -1000 }]);
   });
   it("a pending-to-posted replacement changes the balance only once", async () => {
     updates.added = [raw()];
@@ -255,7 +402,7 @@ describe("bank reconciliation", () => {
     expect(transactions(state)).toHaveLength(1);
     expect(balances(state).food).toBe(8800);
     expect(transactions(state)[0].pending).toBe(false);
-    expect(transactions(state)[0].tags).toContain(AUTOMATICALLY_ADDED_TAG);
+    expect(transactions(state)[0].tags).toEqual([]);
     expect(cursor).toBe("cursor1");
   });
   it("a removed pending charge reverses its deduction", async () => {
@@ -327,11 +474,11 @@ describe("bank reconciliation", () => {
     };
     await sync();
     expect(transactions(state)[0].amount).toBe(1000);
-    expect(transactions(state)[0].needsReview).toContain("changed");
+    expect(transactions(state)[0].needsReview).toBeUndefined();
     expect(transactions(state)[0].note).toBe("Keep my note");
-    expect(transactions(state)[0].tags).not.toContain(AUTOMATICALLY_ADDED_TAG);
+    expect(transactions(state)[0].tags).toEqual([]);
   });
-  it("a possible manual duplicate is retained but excluded for review", async () => {
+  it("counts a bank purchase even when a matching manual purchase exists", async () => {
     const t: Transaction = {
       id: "manual",
       kind: "transaction",
@@ -339,7 +486,7 @@ describe("bank reconciliation", () => {
       type: "expense",
       payee: "Target",
       amount: 1000,
-      date: "2025-04-11",
+      date: "2026-10-06",
       allocations: [{ envelopeId: "food", amount: -1000 }],
       note: "",
       tags: [],
@@ -352,10 +499,82 @@ describe("bank reconciliation", () => {
     state = applyOperation(state, makeOperation(state, [t], "phone", "Manual"));
     updates.added = [raw()];
     await sync();
+    expect(balances(state).food).toBe(8000);
+    expect(transactions(state).find((t) => t.source === "bank")?.excluded).toBe(
+      false,
+    );
+  });
+  it("includes an older duplicate exclusion when the bank updates it", async () => {
+    updates.added = [raw()];
+    await sync();
+    const imported = transactions(state)[0];
+    state = applyOperation(
+      state,
+      makeOperation(
+        state,
+        [
+          {
+            ...imported,
+            excluded: true,
+            needsReview:
+              "Possible duplicate of Target on 2026-10-06. Excluded until you review.",
+          },
+        ],
+        "phone",
+        "Old duplicate exclusion",
+      ),
+    );
+    expect(balances(state).food).toBe(10000);
+    updates = { ...updates, added: [], modified: [raw({ pending: false })] };
+    await sync();
+    expect(transactions(state)[0].excluded).toBe(false);
+    expect(transactions(state)[0].needsReview).toBeUndefined();
     expect(balances(state).food).toBe(9000);
-    expect(
-      transactions(state).find((t) => t.source === "bank")?.needsReview,
-    ).toContain("duplicate");
+  });
+  it("rescales an unedited split when the final bank amount changes", async () => {
+    updates.added = [raw()];
+    await sync();
+    const imported = transactions(state)[0];
+    state = applyOperation(
+      state,
+      makeOperation(
+        state,
+        [
+          {
+            id: "other",
+            kind: "envelope",
+            version: 0,
+            name: "Other",
+            target: 10000,
+            opening: 10000,
+            icon: "Wallet",
+            color: "blue",
+            order: 1,
+            archived: false,
+          },
+          {
+            ...imported,
+            allocations: [
+              { envelopeId: "food", amount: -600 },
+              { envelopeId: "other", amount: -400 },
+            ],
+          },
+        ],
+        "phone",
+        "Split bank purchase",
+      ),
+    );
+    updates = {
+      ...updates,
+      added: [],
+      modified: [raw({ amount: 12, pending: false })],
+    };
+    await sync();
+    expect(transactions(state)[0].amount).toBe(1200);
+    expect(transactions(state)[0].allocations).toEqual([
+      { envelopeId: "food", amount: -720 },
+      { envelopeId: "other", amount: -480 },
+    ]);
   });
   it("bank refreshes cannot resurrect a deleted imported transaction", async () => {
     updates.added = [raw()];

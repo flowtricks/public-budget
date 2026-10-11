@@ -7,12 +7,12 @@ afterEach(() => vi.unstubAllGlobals());
 it("compares selected post-connection Plaid transactions with imported records", async () => {
   const key = "ab".repeat(32);
   const connection = {
-    id: "sample-item",
-    name: "Example bank",
+    id: "chase-item",
+    name: "Chase",
     token: await encrypt("access-token", key),
     selected_accounts: '["selected-card"]',
-    connected_at: "2025-04-12T04:00:00Z",
-    connected_on: "2025-04-11",
+    connected_at: "2026-10-07T04:00:00Z",
+    connected_on: "2026-10-06",
   };
   const env: any = {
     TOKEN_KEY: key,
@@ -25,7 +25,7 @@ it("compares selected post-connection Plaid transactions with imported records",
             return {
               first: async () => connection,
               all: async () => ({
-                results: [{ sourceId: "sample-item:sample" }],
+                results: [{ sourceId: "chase-item:gas" }],
               }),
             };
           },
@@ -41,39 +41,48 @@ it("compares selected post-connection Plaid transactions with imported records",
     amount: 12.34,
     pending: true,
   });
-  vi.stubGlobal("fetch", async () =>
-    new Response(
-      JSON.stringify({
-        added: [
-          purchase("sample", "selected-card", "2025-04-12"),
-          purchase("other", "unselected-card", "2025-04-12"),
-          purchase("old", "selected-card", "2025-04-11"),
-        ],
-        modified: [],
-        removed: [],
-        next_cursor: "cursor",
-        has_more: false,
-      }),
-    ),
+  vi.stubGlobal(
+    "fetch",
+    async () =>
+      new Response(
+        JSON.stringify({
+          added: [
+            purchase("gas", "selected-card", "2026-10-07"),
+            {
+              ...purchase("early", "selected-card", "2026-10-07"),
+              authorized_datetime: "2026-10-07T00:00:00Z",
+            },
+            purchase("removed-pending", "selected-card", "2026-10-07"),
+            purchase("other", "unselected-card", "2026-10-07"),
+            purchase("old", "selected-card", "2026-10-06"),
+          ],
+          modified: [],
+          removed: [{ transaction_id: "removed-pending" }],
+          next_cursor: "cursor",
+          has_more: false,
+        }),
+      ),
   );
 
   const response = await bankRoute(
-    new Request("https://budget.example/api/banks/audit?id=sample-item"),
+    new Request(
+      "https://budget.example/api/banks/audit?id=chase-item&day=2026-10-07",
+    ),
     env,
     {} as ExecutionContext,
     "",
   );
-  expect(await response.json()).toMatchObject({
+  const audit = (await response.json()) as any;
+  expect(audit).toMatchObject({
     complete: true,
     availableSinceConnection: 1,
-    notImported: 0,
-    recent: [
-      {
-        payee: "sample",
-        amount: 1234,
-        pending: true,
-        imported: true,
-      },
-    ],
+    availableOnDay: 2,
+    notImported: 1,
   });
+  expect(audit.recent).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ payee: "gas", imported: true }),
+      expect.objectContaining({ payee: "early", imported: false }),
+    ]),
+  );
 });

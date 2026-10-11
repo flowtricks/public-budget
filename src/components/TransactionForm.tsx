@@ -1,4 +1,4 @@
-import { useState, useLayoutEffect, useRef } from "react";
+import { useState, useLayoutEffect, useMemo, useRef } from "react";
 import {
   Plus,
   X,
@@ -14,6 +14,7 @@ import { Modal, Field, DatePicker, Combo } from "./ui";
 import Select from "./Select";
 import PayeeLogo from "./PayeeLogo";
 import CardSource from "./CardSource";
+import TagPicker from "./TagPicker";
 import {
   amountText,
   balances,
@@ -30,6 +31,7 @@ import {
 } from "../../shared/model";
 import { save } from "../lib/store";
 import { recentTransactionPayees } from "../lib/recent-payees";
+import { normalizeTag } from "../lib/budget-index";
 import {
   fiveWeekFundingAmount,
   projectedEnvelopeTotal,
@@ -82,8 +84,14 @@ export default function TransactionForm({
       window.removeEventListener("resize", fit);
     };
   }, [note]);
-  const [tags, setTags] = useState(
-    withoutAutomaticTag(initial?.tags || []).join(", "),
+  const [tags, setTags] = useState(withoutAutomaticTag(initial?.tags || []));
+  const [tagDraft, setTagDraft] = useState("");
+  const tagOptions = useMemo(
+    () =>
+      transactions(state).flatMap((transaction) =>
+        withoutAutomaticTag(transaction.tags),
+      ),
+    [state],
   );
   const [allocs, setAllocs] = useState(() => {
     const saved = initial?.allocations.map((a) => ({
@@ -114,7 +122,7 @@ export default function TransactionForm({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [excluded, setExcluded] = useState(initial?.excluded || false);
+  const excluded = !isRefund && type === initial?.type && !!initial.excluded;
   const parse = (v: string) => {
     try {
       return cents(v || "0");
@@ -226,6 +234,8 @@ export default function TransactionForm({
               ? -1
               : 1) * (allocs.length === 1 ? total : cents(a.amount || "0")),
         }));
+      const nextTags = [...tags, tagDraft.trim()].filter(Boolean);
+      const seenTags = new Set<string>();
       const tx: Transaction = {
         ...(isRefund ? {} : initial),
         id: (!isRefund && initial?.id) || crypto.randomUUID(),
@@ -241,14 +251,14 @@ export default function TransactionForm({
         amount: total,
         date,
         note,
-        tags: withoutAutomaticTag([
-          ...new Set(
-            tags
-              .split(",")
-              .map((t) => t.trim())
-              .filter(Boolean),
-          ),
-        ]),
+        tags: withoutAutomaticTag(
+          nextTags.filter((tag) => {
+            const key = normalizeTag(tag);
+            if (seenTags.has(key)) return false;
+            seenTags.add(key);
+            return true;
+          }),
+        ),
         allocations,
         pending: (!isRefund && initial?.pending) || false,
         deleted: false,
@@ -753,16 +763,16 @@ export default function TransactionForm({
                 onChange={(e) => setNote(e.target.value)}
               />
             </Field>
-            <Field label="Tags">
-              <Combo
-                id="tags"
-                label="Tags"
-                value={tags}
+            <div className="field tag-field">
+              <label htmlFor="transaction-tags">Tags</label>
+              <TagPicker
+                selected={tags}
+                draft={tagDraft}
+                options={tagOptions}
                 onChange={setTags}
-                options={transactions(state).flatMap((t) => t.tags)}
-                placeholder="Optional"
+                onDraftChange={setTagDraft}
               />
-            </Field>
+            </div>
           </section>
           {initial?.type === "expense" && !initial.deleted && !isRefund && (
             <button
@@ -772,26 +782,11 @@ export default function TransactionForm({
                 setIsRefund(true);
                 setDate(today(settings(state).timezone));
                 setType("refund");
-                setExcluded(false);
                 setNote("Refund for " + initial.payee);
               }}
             >
               Record a refund for this purchase
             </button>
-          )}
-          {(initial?.source === "bank" || initial?.needsReview) &&
-            !isRefund && (
-              <label className="check-row">
-                <input
-                  type="checkbox"
-                  checked={excluded}
-                  onChange={(e) => setExcluded(e.target.checked)}
-                />{" "}
-                Exclude from budget (payment, transfer, or duplicate)
-              </label>
-            )}
-          {initial?.needsReview && (
-            <div className="notice warning">{initial.needsReview}</div>
           )}
           {deleteConfirm && (
             <div className="notice danger">

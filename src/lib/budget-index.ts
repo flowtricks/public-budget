@@ -7,14 +7,10 @@ import {
   type Transaction,
   type Envelope,
 } from "../../shared/model";
-import { isUnapprovedAutomatic } from "../../shared/automatic-import";
 import { transactionTitle } from "./transaction-display";
 
 // Build once per budget revision, rather than scanning history on every UI update.
 export const normalizeTag = (tag: string) => tag.trim().toLocaleLowerCase();
-export const transactionNeedsReview = (transaction: Transaction) =>
-  Boolean(transaction.needsReview) || isUnapprovedAutomatic(transaction);
-
 export function createBudgetIndex(state: State) {
   const es = envelopes(state);
   const active = es.filter((envelope) => !envelope.archived);
@@ -25,7 +21,6 @@ export function createBudgetIndex(state: State) {
     (transaction) =>
       transaction.type === "income" && !transaction.allocations.length,
   );
-  const reviews = all.filter(transactionNeedsReview);
   const pending = visible.filter((transaction) => transaction.pending);
   const byEnvelope = new Map<string, Transaction[]>();
   for (const transaction of everyTransaction) {
@@ -51,7 +46,6 @@ export function createBudgetIndex(state: State) {
     all,
     visible,
     unallocated,
-    reviews,
     pending,
     byEnvelope,
     envelopeGroups,
@@ -83,16 +77,13 @@ export function filterTransactions(
     if (filter === "pending" && !transaction.pending) return false;
     if (filter === "expense" && transaction.type !== "expense") return false;
     if (filter === "income" && transaction.type !== "income") return false;
-    if (filter === "automatic" && !isUnapprovedAutomatic(transaction))
-      return false;
     if (
       tagKeys.size &&
       !transaction.tags.some((tag) => tagKeys.has(normalizeTag(tag)))
     )
       return false;
     if (
-      filter === "review" &&
-      !transactionNeedsReview(transaction) &&
+      filter === "unallocated" &&
       !(
         transaction.type === "income" &&
         !transaction.excluded &&

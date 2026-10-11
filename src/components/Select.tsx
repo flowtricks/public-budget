@@ -24,6 +24,8 @@ export default function Select<T extends string>({
   const trigger = useRef<HTMLButtonElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const optionList = useRef<HTMLDivElement>(null);
+  const touchStart = useRef<{ id: number; x: number; y: number } | null>(null);
+  const touchSelected = useRef(false);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [query, setQuery] = useState("");
@@ -70,13 +72,7 @@ export default function Select<T extends string>({
   }
 
   return (
-    <div
-      className={`combo-control select-control ${className}`}
-      ref={root}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
-      }}
-    >
+    <div className={`combo-control select-control ${className}`} ref={root}>
       <button
         ref={trigger}
         type="button"
@@ -199,16 +195,51 @@ export default function Select<T extends string>({
             className="combo-options"
           >
             {visibleOptions.map((option, index) => (
-              <div
+              <button
                 key={option.value}
+                type="button"
                 id={`${id}-${index}`}
                 data-option-index={index}
                 role="option"
                 aria-selected={option.value === value}
                 className={active === index ? "active" : undefined}
-                onPointerDown={(event) => event.preventDefault()}
+                onPointerDown={(event) => {
+                  // Keep keyboard focus in the search field for mouse clicks.
+                  if (event.pointerType === "mouse") event.preventDefault();
+                  else
+                    touchStart.current = {
+                      id: event.pointerId,
+                      x: event.clientX,
+                      y: event.clientY,
+                    };
+                }}
+                onPointerMove={(event) => {
+                  const start = touchStart.current;
+                  if (
+                    start?.id === event.pointerId &&
+                    Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10
+                  )
+                    touchStart.current = null;
+                }}
+                onPointerUp={(event) => {
+                  const start = touchStart.current;
+                  touchStart.current = null;
+                  if (start?.id !== event.pointerId) return;
+                  touchSelected.current = true;
+                  choose(index);
+                  window.setTimeout(() => {
+                    touchSelected.current = false;
+                  }, 350);
+                }}
+                onPointerCancel={() => {
+                  touchStart.current = null;
+                }}
                 onClick={(event) => {
                   event.preventDefault();
+                  if (touchSelected.current) {
+                    touchSelected.current = false;
+                    return;
+                  }
                   choose(index);
                 }}
               >
@@ -219,7 +250,7 @@ export default function Select<T extends string>({
                 {option.value === value && (
                   <Check size={16} aria-hidden="true" />
                 )}
-              </div>
+              </button>
             ))}
             {visibleOptions.length === 0 && (
               <div className="combo-empty">No matching envelopes</div>

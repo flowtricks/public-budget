@@ -348,7 +348,9 @@ export function Combo({
         className="combo-chevron"
         aria-label={`Toggle ${label.toLowerCase()} suggestions`}
         tabIndex={-1}
-        onPointerDown={(event) => event.preventDefault()}
+        onPointerDown={(event) => {
+          if (event.pointerType === "mouse") event.preventDefault();
+        }}
         onClick={(event) => {
           event.preventDefault();
           const next = !open;
@@ -369,7 +371,8 @@ export function Combo({
             className="combo-options"
           >
             {matches.map((option, index) => (
-              <div
+              <button
+                type="button"
                 role="option"
                 id={`${listId}-${index}`}
                 data-option-index={index}
@@ -412,7 +415,7 @@ export function Combo({
                   <span>{option}</span>
                 </span>
                 {option === value && <Check size={14} aria-hidden="true" />}
-              </div>
+              </button>
             ))}
           </div>
           {!matches.length && (

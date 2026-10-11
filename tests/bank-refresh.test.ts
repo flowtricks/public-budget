@@ -53,7 +53,7 @@ const env: any = {
 
 beforeEach(async () => {
   vi.useFakeTimers();
-  vi.setSystemTime(new Date("2025-04-12T12:17:00Z"));
+  vi.setSystemTime(new Date("2026-10-07T12:17:00Z"));
   attempts.clear();
   requests = [];
   const token = await encrypt("test-token", env.TOKEN_KEY);
@@ -62,8 +62,8 @@ beforeEach(async () => {
     name,
     provider: "plaid",
     enabled,
-    connected_at: "2025-04-11T00:00:00.000Z",
-    connected_on: "2025-04-11",
+    connected_at: "2026-10-06T00:00:00.000Z",
+    connected_on: "2026-10-06",
     selected_accounts: "[]",
     token,
   });
@@ -132,6 +132,31 @@ it("keeps automatic refresh independent and does not throttle manual requests", 
   expect(requests).toHaveLength(6);
 });
 
+it("directs the user to reconnect when Plaid cannot see any accounts", async () => {
+  vi.stubGlobal(
+    "fetch",
+    async () =>
+      new Response(JSON.stringify({ error_code: "NO_ACCOUNTS" }), {
+        status: 400,
+      }),
+  );
+  const response = await bankRoute(
+    new Request("https://budget.example/api/banks/refresh", {
+      method: "POST",
+      body: JSON.stringify({ id: "chase" }),
+    }),
+    env,
+    {
+      waitUntil: () => {
+        throw new Error("Sync must not start");
+      },
+    } as any,
+    "",
+  );
+  expect(response.status).toBe(409);
+  expect((await response.json()).error).toMatch(/Reconnect this login/);
+});
+
 it("refreshes all eligible banks with one sync request", async () => {
   const pending: Promise<unknown>[] = [];
   const response = await bankRoute(
@@ -148,10 +173,31 @@ it("refreshes all eligible banks with one sync request", async () => {
     "",
   );
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ requested: 2, failed: [] });
+  expect(await response.json()).toEqual({
+    requested: 2,
+    checked: 3,
+    failed: [],
+  });
   expect(
     requests.filter((url) => url.endsWith("/transactions/refresh")),
   ).toHaveLength(2);
+  expect(pending).toHaveLength(1);
+  await Promise.all(pending);
+});
+
+it("checks Capital One without requesting its unsupported credit-card refresh", async () => {
+  const pending: Promise<unknown>[] = [];
+  const response = await bankRoute(
+    new Request("https://budget.example/api/banks/refresh", {
+      method: "POST",
+      body: JSON.stringify({ id: "capital-one" }),
+    }),
+    env,
+    { waitUntil: (task: Promise<unknown>) => pending.push(task) } as any,
+    "",
+  );
+  expect(await response.json()).toEqual({ ok: true, mode: "check" });
+  expect(requests).toHaveLength(0);
   expect(pending).toHaveLength(1);
   await Promise.all(pending);
 });
@@ -181,6 +227,7 @@ it("reports a failed bank while refreshing the others", async () => {
   );
   expect(await response.json()).toEqual({
     requested: 1,
+    checked: 3,
     failed: [
       {
         name: "Regions Bank",

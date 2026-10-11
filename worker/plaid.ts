@@ -4,12 +4,13 @@ import { readState, commit, type Env } from "./store";
 import { happenedAfterConnection } from "../shared/bank-filter";
 import type { CardAccount } from "../shared/card";
 import { bankCardAccount } from "./card-product";
+import { withoutAutomaticTag } from "../shared/automatic-import";
 import {
-  AUTOMATICALLY_ADDED_TAG,
-  withoutAutomaticTag,
-} from "../shared/automatic-import";
-import {
-  defaultEnvelope,
+  merchantKey,
+  ruleId,
+  eligibleExpenseEnvelope,
+  popularEnvelope,
+  isLegacyDuplicateExclusion,
   transactions,
   makeOperation,
   settings,
@@ -40,6 +41,14 @@ type Connection = {
   selected_accounts: string;
   enabled: number;
 };
+const isReconnectError = (error: string | null) =>
+  !!error &&
+  (/^(ITEM_LOGIN_REQUIRED|OAUTH_INVALID_TOKEN|OAUTH_USER_REVOKED|OAUTH_CONSENT_EXPIRED|NO_ACCOUNTS)$/.test(
+    error,
+  ) ||
+    /oauth connection.*invalidated|no valid accounts were found at the financial institution/i.test(
+      error,
+    ));
 async function plaid(env: Env, path: string, body: unknown) {
   if (!env.PLAID_CLIENT_ID || !env.PLAID_SECRET)
     throw new Error("Bank connections are not configured yet.");
@@ -106,17 +115,32 @@ export async function bankRoute(
     const result = await plaid(env, "/item/get", {
       access_token: await decrypt(connection.token, env.TOKEN_KEY),
     });
+    const itemError = result.item?.error?.error_code || null;
+    if (!itemError && isReconnectError(connection.error)) {
+      await env.DB.prepare(
+        "UPDATE connections SET error=NULL WHERE id=? AND error=?",
+      )
+        .bind(connection.id, connection.error)
+        .run();
+      ctx.waitUntil(syncAll(env, connection.id));
+    }
     return json({
       name: connection.name,
-      lastBankUpdate: result.status?.transactions?.last_successful_update || null,
-      lastFailedBankUpdate: result.status?.transactions?.last_failed_update || null,
-      itemError: result.item?.error?.error_code || null,
+      lastBankUpdate:
+        result.status?.transactions?.last_successful_update || null,
+      lastFailedBankUpdate:
+        result.status?.transactions?.last_failed_update || null,
+      itemError,
       webhookConfigured: !!result.item?.webhook,
       webhookMatches: result.item?.webhook === env.PLAID_WEBHOOK_URL,
     });
   }
   if (path === "/api/banks/audit" && request.method === "GET") {
-    const id = new URL(request.url).searchParams.get("id");
+    const url = new URL(request.url);
+    const id = url.searchParams.get("id");
+    const day = url.searchParams.get("day");
+    if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day))
+      return json({ error: "Choose a valid date." }, 400);
     const connection = id
       ? await env.DB.prepare("SELECT * FROM connections WHERE id=?")
           .bind(id)
@@ -136,37 +160,52 @@ export async function bankRoute(
       const result = await plaid(env, "/transactions/sync", {
         access_token: token,
         cursor,
-        count: 100,
+        count: 500,
       });
       for (const raw of [...result.added, ...result.modified])
         rawById.set(raw.transaction_id, raw);
+      for (const raw of result.removed) rawById.delete(raw.transaction_id);
       cursor = result.next_cursor;
       more = result.has_more;
     }
     const stored = (
       await env.DB.prepare(
-        "SELECT json_extract(body,'$.sourceId') AS sourceId FROM records WHERE kind='transaction' AND json_extract(body,'$.sourceId') LIKE ?",
+        "SELECT json_extract(body,'$.sourceId') AS sourceId FROM records WHERE kind='transaction' AND COALESCE(json_extract(body,'$.deleted'),0)=0 AND json_extract(body,'$.sourceId') LIKE ?",
       )
         .bind(connection.id + ":%")
         .all<{ sourceId: string }>()
     ).results;
     const storedIds = new Set(stored.map((row) => row.sourceId));
-    const eligible = [...rawById.values()].filter(
-      (raw) =>
-        selected.has(raw.account_id) &&
-        happenedAfterConnection(
-          raw,
-          connection.connected_at,
-          connection.connected_on,
-        ),
+    const selectedTransactions = [...rawById.values()].filter((raw) =>
+      selected.has(raw.account_id),
     );
-    const recent = eligible
+    const eligible = selectedTransactions.filter((raw) =>
+      happenedAfterConnection(
+        raw,
+        connection.connected_at,
+        connection.connected_on,
+      ),
+    );
+    const onDay = day
+      ? selectedTransactions.filter(
+          (raw) => (raw.authorized_date || raw.date) === day,
+        )
+      : eligible;
+    const missing = onDay.filter(
+      (raw) => !storedIds.has(connection.id + ":" + raw.transaction_id),
+    );
+    const missingSinceConnection = eligible.filter(
+      (raw) => !storedIds.has(connection.id + ":" + raw.transaction_id),
+    );
+    const recent = onDay
       .sort((a, b) =>
-        String(b.authorized_datetime || b.authorized_date || b.date).localeCompare(
+        String(
+          b.authorized_datetime || b.authorized_date || b.date,
+        ).localeCompare(
           String(a.authorized_datetime || a.authorized_date || a.date),
         ),
       )
-      .slice(0, 20)
+      .slice(0, day ? 100 : 20)
       .map((raw) => ({
         payee: raw.merchant_name || raw.name || "Bank transaction",
         date: raw.authorized_date || raw.date,
@@ -176,13 +215,21 @@ export async function bankRoute(
       }));
     return json({
       name: connection.name,
+      day,
       complete: !more,
       selectedAccounts: selected.size,
       availableSinceConnection: eligible.length,
-      notImported: eligible.filter(
-        (raw) => !storedIds.has(connection.id + ":" + raw.transaction_id),
-      ).length,
+      notImportedSinceConnection: missingSinceConnection.length,
+      availableOnDay: onDay.length,
+      notImported: missing.length,
       recent,
+      recentMissingSinceConnection: missingSinceConnection
+        .slice(0, 100)
+        .map((raw) => ({
+          payee: raw.merchant_name || raw.name || "Bank transaction",
+          date: raw.authorized_date || raw.date,
+          amount: Math.round(Math.abs(raw.amount) * 100),
+        })),
     });
   }
   if (path === "/api/banks/repair-webhook" && request.method === "POST") {
@@ -286,8 +333,11 @@ export async function bankRoute(
       return json({ error: "Connection not found." }, 404);
     // A household can have separate bank logins belonging to different people.
     // Give each login a stable Plaid user identifier instead of sharing one.
-    const clientUserId = existing?.client_user_id ||
-      (existing ? `public-budget-bank-${existing.id}` : `public-budget-bank-${crypto.randomUUID()}`);
+    const clientUserId =
+      existing?.client_user_id ||
+      (existing
+        ? `public-budget-bank-${existing.id}`
+        : `public-budget-bank-${crypto.randomUUID()}`);
     const result = await plaid(env, "/link/token/create", {
       user: { client_user_id: clientUserId },
       client_name: "Public Budget",
@@ -354,30 +404,54 @@ export async function bankRoute(
     await syncAll(env);
     return json({ ok: true });
   }
-  if (path === "/api/banks/refresh-all" && request.method === "POST") {
-    if (env.PLAID_REFRESH_ENABLED !== "true")
+  if (path === "/api/banks/reconnect" && request.method === "POST") {
+    const body = (await request.json()) as { id?: string };
+    const connection = body.id
+      ? await env.DB.prepare("SELECT * FROM connections WHERE id=?")
+          .bind(body.id)
+          .first<Connection>()
+      : null;
+    if (!connection || !env.TOKEN_KEY)
+      return json({ error: "Connection not found." }, 404);
+    const result = await plaid(env, "/item/get", {
+      access_token: await decrypt(connection.token, env.TOKEN_KEY),
+    });
+    const itemError = result.item?.error?.error_code;
+    if (itemError)
       return json(
         {
-          error:
-            "The owner must verify provider pricing and enable on-demand refresh first.",
+          error: `Plaid still reports ${itemError}. Finish reconnecting this bank login and try again.`,
         },
-        422,
+        409,
       );
+    if (isReconnectError(connection.error))
+      await env.DB.prepare(
+        "UPDATE connections SET error=NULL WHERE id=? AND error=?",
+      )
+        .bind(connection.id, connection.error)
+        .run();
+    ctx.waitUntil(syncAll(env, connection.id));
+    return json({ ok: true });
+  }
+  if (path === "/api/banks/refresh-all" && request.method === "POST") {
     if (!env.TOKEN_KEY)
       return json({ error: "Bank connections are not configured yet." }, 422);
     const connections = (
       await env.DB.prepare("SELECT * FROM connections").all<Connection>()
     ).results.filter(
       (connection) =>
-        connection.provider === "plaid" &&
-        connection.enabled === 1 &&
-        !/capital one/i.test(connection.name),
+        connection.provider === "plaid" && connection.enabled === 1,
     );
     if (!connections.length)
       return json({ error: "No banks are available for refresh." }, 422);
     let requested = 0;
     const failed: { name: string; reason: string }[] = [];
     for (const connection of connections) {
+      if (
+        env.PLAID_REFRESH_ENABLED !== "true" ||
+        /capital one/i.test(connection.name)
+      )
+        continue;
       try {
         await requestRefresh(env, connection, "manual");
         requested++;
@@ -396,18 +470,10 @@ export async function bankRoute(
         });
       }
     }
-    if (requested) ctx.waitUntil(syncAll(env));
-    return json({ requested, failed });
+    ctx.waitUntil(syncAll(env));
+    return json({ requested, checked: connections.length, failed });
   }
   if (path === "/api/banks/refresh" && request.method === "POST") {
-    if (env.PLAID_REFRESH_ENABLED !== "true")
-      return json(
-        {
-          error:
-            "The owner must verify provider pricing and enable on-demand refresh first.",
-        },
-        422,
-      );
     const b = (await request.json()) as { id: string };
     const c = await env.DB.prepare("SELECT * FROM connections WHERE id=?")
       .bind(b.id)
@@ -416,14 +482,29 @@ export async function bankRoute(
       return json({ error: "Connection not found." }, 404);
     if (!c.enabled)
       return json({ error: "Choose the bank accounts to import first." }, 422);
-    if (/capital one/i.test(c.name))
+    if (/capital one/i.test(c.name)) {
+      ctx.waitUntil(syncAll(env, c.id));
+      return json({ ok: true, mode: "check" });
+    }
+    if (env.PLAID_REFRESH_ENABLED !== "true")
       return json(
-        { error: "Capital One cards use their normal bank update schedule." },
+        {
+          error:
+            "The owner must verify provider pricing and enable on-demand refresh first.",
+        },
         422,
       );
     try {
       await requestRefresh(env, c, "manual");
     } catch (error) {
+      if ((error as Error & { plaidCode?: string }).plaidCode === "NO_ACCOUNTS")
+        return json(
+          {
+            error:
+              "This bank connection cannot access any accounts. Reconnect this login and select the accounts to share.",
+          },
+          409,
+        );
       if (
         ["TRANSACTIONS_REFRESH_LIMIT", "INSTITUTION_RATE_LIMIT"].includes(
           (error as Error & { plaidCode?: string }).plaidCode || "",
@@ -653,7 +734,9 @@ async function syncConnection(env: Env, c: Connection) {
     );
   if (!added.length && !removed.length) {
     await selectionUnchanged();
-    await env.DB.prepare("UPDATE connections SET cursor=?,backfill_day=NULL WHERE id=?")
+    await env.DB.prepare(
+      "UPDATE connections SET cursor=?,backfill_day=NULL WHERE id=?",
+    )
       .bind(cursor || null, c.id)
       .run();
     return;
@@ -673,12 +756,98 @@ async function syncConnection(env: Env, c: Connection) {
   const pendingReplaced = new Set(
     added.map((t) => t.pending_transaction_id).filter(Boolean),
   );
-  const knownSourceIds = new Set(
-    transactions(await readState(env.DB))
-      .filter((transaction) => transaction.source === "bank")
-      .map((transaction) => transaction.sourceId)
-      .filter((id): id is string => !!id),
-  );
+  let state = await readState(env.DB);
+  const bySourceId = new Map<string, Transaction>();
+  const originalPurchases = new Map<string, Transaction>();
+  const expensePayees = new Set<string>();
+  const recentEnvelopes = new Map<string, string>();
+  const envelopeCounts = new Map<string, Map<string, number>>();
+  const countedUsage = new Map<
+    string,
+    { merchant: string; envelopeId: string }
+  >();
+  const staged = new Map<string, BudgetRecord>();
+  for (const transaction of transactions(state)) {
+    if (
+      transaction.source === "bank" &&
+      transaction.sourceId &&
+      !bySourceId.has(transaction.sourceId)
+    )
+      bySourceId.set(transaction.sourceId, transaction);
+    if (transaction.type !== "expense") continue;
+    const payeeKey = transaction.payee.toLowerCase();
+    expensePayees.add(payeeKey);
+    if (transaction.deleted || transaction.excluded) continue;
+    if (!originalPurchases.has(payeeKey))
+      originalPurchases.set(payeeKey, transaction);
+    const envelopeId = eligibleExpenseEnvelope(state, transaction);
+    if (!envelopeId) continue;
+    const merchant = merchantKey(transaction.payee);
+    countedUsage.set(transaction.id, { merchant, envelopeId });
+    const counts = envelopeCounts.get(merchant) || new Map<string, number>();
+    counts.set(envelopeId, (counts.get(envelopeId) || 0) + 1);
+    envelopeCounts.set(merchant, counts);
+    if (!recentEnvelopes.has(merchant))
+      recentEnvelopes.set(merchant, envelopeId);
+  }
+  async function flush() {
+    if (!staged.size) return;
+    await selectionUnchanged();
+    await commit(
+      env.DB,
+      makeOperation(state, [...staged.values()], "bank:" + c.id, "Bank update"),
+      env.LIVE,
+    );
+    state = await readState(env.DB);
+    for (const record of staged.values())
+      if (record.kind === "transaction" && record.sourceId)
+        bySourceId.set(
+          record.sourceId,
+          state.records[record.id] as Transaction,
+        );
+    staged.clear();
+  }
+  function stage(record: BudgetRecord) {
+    staged.set(record.id, record);
+    if (record.kind === "transaction") {
+      const previous = countedUsage.get(record.id);
+      if (previous) {
+        const counts = envelopeCounts.get(previous.merchant)!;
+        counts.set(previous.envelopeId, counts.get(previous.envelopeId)! - 1);
+        countedUsage.delete(record.id);
+      }
+      const envelopeId = eligibleExpenseEnvelope(state, record);
+      if (envelopeId) {
+        const merchant = merchantKey(record.payee);
+        const counts =
+          envelopeCounts.get(merchant) || new Map<string, number>();
+        counts.set(envelopeId, (counts.get(envelopeId) || 0) + 1);
+        envelopeCounts.set(merchant, counts);
+        countedUsage.set(record.id, { merchant, envelopeId });
+        recentEnvelopes.set(merchant, envelopeId);
+      }
+    }
+    if (record.kind === "transaction" && record.sourceId)
+      bySourceId.set(record.sourceId, record);
+  }
+  function fallbackEnvelope(payee: string) {
+    const rule = state.records[ruleId(payee)];
+    let saved: string | undefined;
+    if (rule?.kind === "rule") {
+      const envelope =
+        staged.get(rule.envelopeId) || state.records[rule.envelopeId];
+      if (envelope?.kind === "envelope" && !envelope.archived)
+        saved = rule.envelopeId;
+    }
+    const merchant = merchantKey(payee);
+    return (
+      popularEnvelope(
+        envelopeCounts.get(merchant) || new Map(),
+        saved,
+        recentEnvelopes.get(merchant),
+      ) || settings(state).fallbackId
+    );
+  }
   for (const raw of added) {
     await selectionUnchanged();
     const sourceId = c.id + ":" + raw.transaction_id;
@@ -691,41 +860,32 @@ async function syncConnection(env: Env, c: Connection) {
       !selected.has(raw.account_id) ||
       (!happenedAfterConnection(raw, c.connected_at, c.connected_on) &&
         !oneTimeBackfill &&
-        !knownSourceIds.has(sourceId) &&
-        !(pendingId && knownSourceIds.has(pendingId)))
+        !bySourceId.has(sourceId) &&
+        !(pendingId && bySourceId.has(pendingId)))
     )
       continue;
-    const state = await readState(env.DB);
-    const old = transactions(state).find(
-      (t) => t.sourceId === sourceId || (pendingId && t.sourceId === pendingId),
-    );
+    const old =
+      bySourceId.get(sourceId) ||
+      (pendingId ? bySourceId.get(pendingId) : undefined);
     const amount = Math.round(Math.abs(raw.amount) * 100);
     const payee = raw.merchant_name || raw.name || "Bank transaction";
     const date = raw.authorized_date || raw.date;
     const category = raw.personal_finance_category?.detailed || "";
     const payment = /CREDIT_CARD_PAYMENT/.test(category);
     const movement = /TRANSFER_(IN|OUT)/.test(category);
-    const fallback = defaultEnvelope(state, payee);
+    const fallback = fallbackEnvelope(payee);
     if (!fallback && !payment && !movement)
       throw new Error(
         "Choose a default expense envelope before importing purchases.",
       );
-    const originalPurchase = transactions(state).find(
-      (t) =>
-        t.type === "expense" &&
-        !t.deleted &&
-        !t.excluded &&
-        t.payee.toLowerCase() === payee.toLowerCase(),
-    );
+    const payeeKey = payee.toLowerCase();
+    const originalPurchase = originalPurchases.get(payeeKey);
     const refund =
       raw.amount < 0 &&
       !payment &&
       !movement &&
       !/^INCOME/.test(category) &&
-      transactions(state).some(
-        (t) =>
-          t.type === "expense" && t.payee.toLowerCase() === payee.toLowerCase(),
-      );
+      expensePayees.has(payeeKey);
     const type = raw.amount < 0 ? (refund ? "refund" : "income") : "expense";
     const original = {
       amount,
@@ -739,7 +899,11 @@ async function syncConnection(env: Env, c: Connection) {
       authorizedDate: raw.authorized_date,
       authorizedDatetime: raw.authorized_datetime,
       ...(oneTimeBackfill || old?.bankOriginal?.backfilledOn
-        ? { backfilledOn: oneTimeBackfill ? purchaseDay : old?.bankOriginal?.backfilledOn }
+        ? {
+            backfilledOn: oneTimeBackfill
+              ? purchaseDay
+              : old?.bankOriginal?.backfilledOn,
+          }
         : {}),
     };
     let tx: Transaction = {
@@ -751,7 +915,7 @@ async function syncConnection(env: Env, c: Connection) {
       amount,
       date,
       note: "",
-      tags: [AUTOMATICALLY_ADDED_TAG],
+      tags: [],
       allocations:
         type === "income" || payment || movement
           ? []
@@ -787,12 +951,7 @@ async function syncConnection(env: Env, c: Connection) {
                   amount,
                 },
               ];
-      tx.needsReview =
-        "Refund matched by merchant. Confirm the original purchase and envelope allocation.";
     }
-    if (movement && !payment)
-      tx.needsReview =
-        "Bank transfer excluded. Review if this should affect your budget.";
     if (old) {
       const changedByUser =
         old.bankOriginal &&
@@ -810,10 +969,7 @@ async function syncConnection(env: Env, c: Connection) {
           pending: !!raw.pending,
           bankOriginal: { ...original, edited: true },
           updatedAt: tx.updatedAt,
-          needsReview:
-            old.amount !== amount
-              ? "The bank changed this amount. Your edited amount has been preserved."
-              : old.needsReview,
+          needsReview: undefined,
         };
       else if (old.allocations.length) {
         tx.allocations =
@@ -826,69 +982,60 @@ async function syncConnection(env: Env, c: Connection) {
               ]
             : old.allocations;
         if (old.allocations.length > 1 && old.amount !== amount) {
-          tx.amount = old.amount;
-          tx.needsReview = "Final bank amount changed. Review the exact split.";
+          let remaining = amount;
+          const sign = type === "expense" ? -1 : 1;
+          tx.allocations = old.allocations.map((allocation, index) => {
+            const share =
+              index === old.allocations.length - 1
+                ? remaining
+                : Math.min(
+                    remaining,
+                    Math.round(
+                      (amount * Math.abs(allocation.amount)) /
+                        Math.max(1, old.amount),
+                    ),
+                  );
+            remaining -= share;
+            return { ...allocation, amount: sign * share };
+          });
         }
       }
       tx.deleted = old.deleted && !old.bankOriginal?.removedByBank;
-      tx.excluded = old.excluded;
+      tx.excluded = old.excluded && !isLegacyDuplicateExclusion(old);
     }
-    if (!old && !payment && !movement) {
-      const match = transactions(state).find(
-        (t) =>
-          t.source !== "bank" &&
-          !t.deleted &&
-          t.amount === amount &&
-          t.date === date &&
-          t.payee.toLowerCase() === payee.toLowerCase(),
-      );
-      if (match) {
-        tx.excluded = true;
-        tx.needsReview = `Possible duplicate of ${match.payee} on ${match.date}. Excluded until you review.`;
-      }
-    }
-    const patches: BudgetRecord[] = [tx];
+    stage(tx);
     if (tx.type === "refund" && !tx.deleted && !tx.excluded)
       for (const a of tx.allocations) {
-        const envelope = state.records[a.envelopeId];
+        const envelope =
+          staged.get(a.envelopeId) || state.records[a.envelopeId];
         if (envelope?.kind === "envelope" && envelope.archived)
-          patches.push({ ...envelope, archived: false });
+          stage({ ...envelope, archived: false });
       }
-    const op = makeOperation(
-      state,
-      patches,
-      "bank:" + c.id,
-      "Bank update: " + payee,
-    );
-    await commit(env.DB, op, env.LIVE);
+    if (tx.type === "expense") {
+      expensePayees.add(payeeKey);
+      if (!tx.deleted && !tx.excluded) {
+        originalPurchases.set(payeeKey, tx);
+      }
+    }
+    if (staged.size >= 50) await flush();
   }
   for (const raw of removed) {
     if (pendingReplaced.has(raw.transaction_id)) continue;
-    const state = await readState(env.DB);
-    const old = transactions(state).find(
-      (t) => t.sourceId === c.id + ":" + raw.transaction_id,
-    );
+    const old = bySourceId.get(c.id + ":" + raw.transaction_id);
     if (old && !old.deleted)
-      await commit(
-        env.DB,
-        makeOperation(
-          state,
-          [
-            {
-              ...old,
-              deleted: true,
-              bankOriginal: { ...old.bankOriginal, removedByBank: true },
-              updatedAt: new Date().toISOString(),
-            },
-          ],
-          "bank:" + c.id,
-          "Bank removed transaction",
-        ),
-        env.LIVE,
-      );
+      stage({
+        ...old,
+        deleted: true,
+        bankOriginal: { ...old.bankOriginal, removedByBank: true },
+        updatedAt: new Date().toISOString(),
+      });
+    if (staged.size >= 50) await flush();
   }
+  await flush();
   await selectionUnchanged();
-  await env.DB.prepare("UPDATE connections SET cursor=?,backfill_day=NULL WHERE id=?")
+  await env.DB.prepare(
+    "UPDATE connections SET cursor=?,backfill_day=NULL WHERE id=?",
+  )
     .bind(cursor || null, c.id)
     .run();
 }

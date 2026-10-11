@@ -8,6 +8,39 @@ export function isAppUpdateBlocked() {
   return editing;
 }
 
+/** Check for a fresh build now, then reload even when Settings is open. */
+export async function getAppUpdates(
+  reload: () => void = () => window.location.reload(),
+) {
+  if (!navigator.onLine)
+    throw new Error("Connect to the internet to get app updates.");
+  if (!("serviceWorker" in navigator)) {
+    reload();
+    return;
+  }
+  const worker = navigator.serviceWorker;
+  const registration = await worker.getRegistration();
+  if (registration) {
+    const previousController = worker.controller;
+    await registration.update();
+    if (
+      worker.controller === previousController &&
+      (registration.installing || registration.waiting)
+    ) {
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          window.clearTimeout(timeout);
+          worker.removeEventListener("controllerchange", done);
+          resolve();
+        };
+        const timeout = window.setTimeout(done, 20_000);
+        worker.addEventListener("controllerchange", done);
+      });
+    }
+  }
+  reload();
+}
+
 export class AppUpdates {
   private registration?: ServiceWorkerRegistration;
   private checking = false;

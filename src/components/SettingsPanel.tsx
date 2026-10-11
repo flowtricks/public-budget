@@ -42,6 +42,7 @@ import {
   parseRestore,
   type ImportMapping,
 } from "../lib/csv";
+import { getAppUpdates } from "../lib/app-updates";
 declare global {
   interface Window {
     Plaid?: {
@@ -109,14 +110,35 @@ export default function SettingsPanel({
       }
     >
   >({});
+  const bankHasNoAccounts = (bank: { id: string; error?: string | null }) =>
+    bankStatuses[bank.id]?.itemError === "NO_ACCOUNTS" ||
+    /no valid accounts were found at the financial institution/i.test(
+      bank.error || "",
+    );
   const bankNeedsReconnect = (bank: { id: string; error?: string | null }) =>
-    bankStatuses[bank.id]?.itemError === "ITEM_LOGIN_REQUIRED" ||
-    bank.error === "ITEM_LOGIN_REQUIRED" ||
+    bankHasNoAccounts(bank) ||
+    /^(ITEM_LOGIN_REQUIRED|OAUTH_INVALID_TOKEN|OAUTH_USER_REVOKED|OAUTH_CONSENT_EXPIRED)$/.test(
+      bankStatuses[bank.id]?.itemError || "",
+    ) ||
+    /^(ITEM_LOGIN_REQUIRED|OAUTH_INVALID_TOKEN|OAUTH_USER_REVOKED|OAUTH_CONSENT_EXPIRED)$/.test(
+      bank.error || "",
+    ) ||
     /oauth connection.*invalidated/i.test(bank.error || "");
   const refreshableBanks = (banks?.connections || []).filter(
-    (bank: { enabled: boolean; name: string }) =>
-      bank.enabled && !/capital one/i.test(bank.name),
+    (bank: { enabled: boolean }) => bank.enabled,
   );
+  const [bankAudit, setBankAudit] = useState<{
+    day: string;
+    results: {
+      id: string;
+      name: string;
+      availableOnDay?: number;
+      notImported?: number;
+      complete?: boolean;
+      recent?: { payee: string; amount: number; imported: boolean }[];
+      error?: string;
+    }[];
+  }>();
   const [bankAccounts, setBankAccounts] = useState<
     Record<
       string,
@@ -180,6 +202,7 @@ export default function SettingsPanel({
           }),
         );
         setBankStatuses(Object.fromEntries(statuses));
+        setBanks(await api("/api/banks"));
       });
     if (tab === "devices")
       void run(async () => setDevices((await api("/api/devices")).devices));
@@ -201,7 +224,7 @@ export default function SettingsPanel({
         current.doc!.queue.map((i) => i.op),
         audit,
       ),
-      `budget-${today()}.csv`,
+      `public-budget-${today()}.csv`,
     );
     onSaved(
       snap.doc?.queue.length
@@ -323,7 +346,13 @@ export default function SettingsPanel({
             });
             connectedId = result.id;
           }
-          if (id) await api("/api/banks/sync", {});
+          if (id) {
+            await api("/api/banks/reconnect", { id });
+            const status = await api(
+              `/api/banks/status?id=${encodeURIComponent(id)}`,
+            );
+            setBankStatuses((current) => ({ ...current, [id]: status }));
+          }
           setBanks(await api("/api/banks"));
           if (connectedId) await loadBankAccounts(connectedId);
           onSaved(
@@ -384,7 +413,7 @@ export default function SettingsPanel({
           <>
             <Field
               label="Default expense envelope"
-              hint="New merchants use this envelope. Your latest single-envelope correction is remembered for that merchant."
+              hint="New merchants use this envelope. For familiar merchants, the envelope used most often is chosen."
             >
               <Select
                 label="Default expense envelope"
@@ -421,6 +450,31 @@ export default function SettingsPanel({
                 ].map((t) => ({ value: t, label: t }))}
               />
             </Field>
+            <div className="settings-section">
+              <h3>App updates</h3>
+              <p>Check for the latest version and reload this app.</p>
+              <button
+                type="button"
+                className="button secondary"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await preferenceWrites.current;
+                    if (!snap.demo && getSnapshot().doc?.queue.length) {
+                      await sync();
+                      if (getSnapshot().doc?.queue.length)
+                        throw new Error(
+                          "Your changes are still waiting to sync. Try again after they finish syncing.",
+                        );
+                    }
+                    await getAppUpdates();
+                  })
+                }
+              >
+                <RefreshCw size={16} />
+                {busy ? "Getting updates…" : "Get updates"}
+              </button>
+            </div>
             {snap.demo && (
               <button
                 className="text-button"
@@ -475,22 +529,15 @@ export default function SettingsPanel({
                 <div className="bank-toolbar">
                   <button
                     className="button primary"
-                    disabled={
-                      busy || !banks?.refreshEnabled || !refreshableBanks.length
-                    }
-                    title={
-                      banks?.refreshEnabled
-                        ? "Request a newer update from all supported banks"
-                        : "Enable on-demand refresh after confirming provider pricing"
-                    }
+                    disabled={busy || !refreshableBanks.length}
+                    title="Check all connected banks and request newer data where supported"
                     onClick={() =>
                       void run(async () => {
                         const result = await api("/api/banks/refresh-all", {});
                         setBanks(await api("/api/banks"));
-                        if (result.requested)
-                          onSaved(
-                            `Refresh requested for ${result.requested} bank${result.requested === 1 ? "" : "s"}.`,
-                          );
+                        onSaved(
+                          `Checking ${result.checked} bank${result.checked === 1 ? "" : "s"}; requested fresh data from ${result.requested}.`,
+                        );
                         if (result.failed.length)
                           setError(
                             result.failed
@@ -512,7 +559,60 @@ export default function SettingsPanel({
                   >
                     <Plus size={16} /> Add a bank
                   </button>
+                  <button
+                    className="button secondary"
+                    disabled={busy || !refreshableBanks.length}
+                    onClick={() =>
+                      void run(async () => {
+                        const day = today(settings(state).timezone);
+                        const results = await Promise.all(
+                          refreshableBanks.map(async (bank: { id: string; name: string }) => {
+                            try {
+                              return {
+                                id: bank.id,
+                                ...(await api(
+                                  `/api/banks/audit?id=${encodeURIComponent(bank.id)}&day=${day}`,
+                                )),
+                              };
+                            } catch (error) {
+                              return {
+                                id: bank.id,
+                                name: bank.name,
+                                error: (error as Error).message,
+                              };
+                            }
+                          }),
+                        );
+                        setBankAudit({ day, results });
+                      })
+                    }
+                  >
+                    Check today's transactions
+                  </button>
                 </div>
+                {bankAudit && (
+                  <div className="notice bank-audit" role="status">
+                    <strong>Bank transactions for {bankAudit.day}</strong>
+                    {bankAudit.results.map((result) => (
+                      <p key={result.id}>
+                        <strong>{result.name}:</strong>{" "}
+                        {result.error
+                          ? result.error
+                          : !result.complete
+                            ? "Plaid history is still loading."
+                            : `${result.availableOnDay} available at Plaid, ${result.notImported} without a bank import.`}
+                        {result.recent
+                          ?.filter((transaction) => !transaction.imported)
+                          .map((transaction, index) => (
+                            <span key={index} className="bank-audit-missing">
+                              {transaction.payee} · ${(transaction.amount / 100).toFixed(2)}
+                            </span>
+                          ))}
+                      </p>
+                    ))}
+                    <p>Transactions without a bank import may already be entered manually.</p>
+                  </div>
+                )}
                 {banks?.connections?.map((b: any) => (
                   <div className="bank-connection" key={b.id}>
                     <div className="bank-row">
@@ -530,7 +630,8 @@ export default function SettingsPanel({
                               ? `Plaid checked bank ${new Date(bankStatuses[b.id].lastBankUpdate!).toLocaleString()}`
                               : "Plaid bank check time unavailable"}
                             {bankStatuses[b.id].itemError
-                              ? bankStatuses[b.id].itemError === "ITEM_LOGIN_REQUIRED"
+                              ? bankStatuses[b.id].itemError ===
+                                "ITEM_LOGIN_REQUIRED"
                                 ? " · Reconnect needed"
                                 : ` · ${bankStatuses[b.id].itemError}`
                               : ""}
@@ -571,7 +672,9 @@ export default function SettingsPanel({
                         {(b.error || bankNeedsReconnect(b)) && (
                           <p className="error">
                             {bankNeedsReconnect(b)
-                              ? "This bank connection needs to reconnect before new transactions can arrive."
+                              ? bankHasNoAccounts(b)
+                                ? "Plaid cannot see any accounts for this login. Reconnect it and grant access to the accounts you want to import."
+                                : "This bank connection needs to reconnect before new transactions can arrive."
                               : b.error}
                           </p>
                         )}
@@ -606,19 +709,27 @@ export default function SettingsPanel({
                         disabled={
                           busy ||
                           !b.enabled ||
-                          !banks.refreshEnabled ||
-                          /capital one/i.test(b.name)
+                          (!banks.refreshEnabled &&
+                            !/capital one/i.test(b.name))
                         }
                         title={
-                          banks.refreshEnabled
-                            ? "Request a newer bank update"
-                            : "Enable on-demand refresh after confirming provider pricing"
+                          /capital one/i.test(b.name)
+                            ? "Check for transactions from Plaid's regular Capital One updates"
+                            : banks.refreshEnabled
+                              ? "Request a newer bank update"
+                              : "Enable on-demand refresh after confirming provider pricing"
                         }
                         onClick={() =>
                           void run(async () => {
-                            await api("/api/banks/refresh", { id: b.id });
+                            const result = await api("/api/banks/refresh", {
+                              id: b.id,
+                            });
                             setBanks(await api("/api/banks"));
-                            onSaved("Bank refresh requested");
+                            onSaved(
+                              result.mode === "check"
+                                ? "Checking for available bank transactions."
+                                : "Bank refresh requested",
+                            );
                           })
                         }
                       >
