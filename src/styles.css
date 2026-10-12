@@ -1319,6 +1319,19 @@ svg {
   margin-top: 0.142857rem;
   accent-color: #739556;
 }
+.bank-budget-exclusion {
+  padding: 0.857143rem 0;
+}
+.bank-budget-exclusion small {
+  display: block;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.bank-budget-exclusion-note {
+  margin: 0 1.571429rem;
+  color: var(--muted);
+  font-size: 0.857143rem;
+}
 .date-control {
   position: relative;
 }

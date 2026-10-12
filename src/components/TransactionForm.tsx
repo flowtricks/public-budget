@@ -122,7 +122,10 @@ export default function TransactionForm({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const excluded = !isRefund && type === initial?.type && !!initial.excluded;
+  const [excludeFromBudget, setExcludeFromBudget] = useState(
+    !!initial?.excluded,
+  );
+  const excluded = !isRefund && excludeFromBudget;
   const parse = (v: string) => {
     try {
       return cents(v || "0");
@@ -200,7 +203,9 @@ export default function TransactionForm({
     try {
       if (total <= 0) throw new Error("Enter an amount greater than zero.");
       let allocations: { envelopeId: string; amount: number }[];
-      if (type === "income") {
+      if (excluded) {
+        allocations = [];
+      } else if (type === "income") {
         allocations = incomeAllocs
           .map((a) => ({ envelopeId: a.id, amount: cents(a.amount || "0") }))
           .filter((a) => a.amount !== 0);
@@ -412,7 +417,29 @@ export default function TransactionForm({
               />
             </Field>
           </section>
-          {type === "income" ? (
+          {initial?.source === "bank" && !isRefund && (
+            <label className="check-row bank-budget-exclusion">
+              <input
+                type="checkbox"
+                checked={excludeFromBudget}
+                onChange={(event) =>
+                  setExcludeFromBudget(event.target.checked)
+                }
+              />
+              <span>
+                Exclude from budget
+                <small>
+                  Use for credit card payments and transfers between your
+                  accounts.
+                </small>
+              </span>
+            </label>
+          )}
+          {excluded ? (
+            <p className="bank-budget-exclusion-note">
+              This transaction will not change your envelope balances.
+            </p>
+          ) : type === "income" ? (
             <section className="allocation-section">
               <div className="section-heading">
                 <div>

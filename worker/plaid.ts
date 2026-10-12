@@ -871,7 +871,13 @@ async function syncConnection(env: Env, c: Connection) {
     const payee = raw.merchant_name || raw.name || "Bank transaction";
     const date = raw.authorized_date || raw.date;
     const category = raw.personal_finance_category?.detailed || "";
-    const payment = /CREDIT_CARD_PAYMENT/.test(category);
+    const card = accounts.get(raw.account_id);
+    const payment =
+      /CREDIT_CARD_PAYMENT/.test(category) ||
+      (raw.amount < 0 &&
+        card?.type === "credit" &&
+        /^LOAN_DISBURSEMENTS/.test(category) &&
+        /\bpayment\b/i.test(payee));
     const movement = /TRANSFER_(IN|OUT)/.test(category);
     const fallback = fallbackEnvelope(payee);
     if (!fallback && !payment && !movement)
@@ -971,7 +977,7 @@ async function syncConnection(env: Env, c: Connection) {
           updatedAt: tx.updatedAt,
           needsReview: undefined,
         };
-      else if (old.allocations.length) {
+      else if (old.allocations.length && !payment && !movement) {
         tx.allocations =
           old.allocations.length === 1
             ? [
@@ -1001,7 +1007,10 @@ async function syncConnection(env: Env, c: Connection) {
         }
       }
       tx.deleted = old.deleted && !old.bankOriginal?.removedByBank;
-      tx.excluded = old.excluded && !isLegacyDuplicateExclusion(old);
+      tx.excluded =
+        payment ||
+        movement ||
+        (old.excluded && !isLegacyDuplicateExclusion(old));
     }
     stage(tx);
     if (tx.type === "refund" && !tx.deleted && !tx.excluded)

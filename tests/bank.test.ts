@@ -435,6 +435,45 @@ describe("bank reconciliation", () => {
     expect(balances(state).food).toBe(10000);
     expect(transactions(state).every((t) => t.excluded)).toBe(true);
   });
+  it("excludes a card payment Plaid labels as a loan disbursement", async () => {
+    updates.added = [
+      raw({
+        transaction_id: "thank-you",
+        amount: -150,
+        merchant_name: "Card Payment Online",
+        pending: false,
+        personal_finance_category: {
+          detailed: "LOAN_DISBURSEMENTS_OTHER_DISBURSEMENT",
+        },
+      }),
+    ];
+    await sync();
+    const payment = transactions(state)[0];
+    expect(payment.excluded).toBe(true);
+    expect(payment.allocations).toEqual([]);
+    expect(balances(state).food).toBe(10000);
+  });
+  it("reclassifies an unedited card payment when Plaid corrects its category", async () => {
+    updates.added = [raw({ transaction_id: "card-payment", amount: -50 })];
+    await sync();
+    expect(transactions(state)[0].excluded).toBe(false);
+    updates = {
+      ...updates,
+      added: [],
+      modified: [
+        raw({
+          transaction_id: "card-payment",
+          amount: -50,
+          personal_finance_category: {
+            detailed: "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT",
+          },
+        }),
+      ],
+    };
+    await sync();
+    expect(transactions(state)[0].excluded).toBe(true);
+    expect(transactions(state)[0].allocations).toEqual([]);
+  });
   it("imported paychecks wait for manual distribution", async () => {
     updates.added = [
       raw({
