@@ -417,6 +417,34 @@ describe("bank reconciliation", () => {
     expect(balances(state).food).toBe(10000);
     expect(transactions(state)[0].deleted).toBe(true);
   });
+  it("a canceled pending charge reverses its deduction after an edit", async () => {
+    updates.added = [raw()];
+    await sync();
+    const tx = transactions(state)[0];
+    state = applyOperation(
+      state,
+      makeOperation(
+        state,
+        [
+          {
+            ...tx,
+            note: "Waiting for tip",
+            bankOriginal: { ...tx.bankOriginal, edited: true },
+          },
+        ],
+        "phone",
+        "Edit pending purchase",
+      ),
+    );
+    updates = {
+      ...updates,
+      added: [],
+      removed: [{ transaction_id: "pending1" }],
+    };
+    await sync();
+    expect(balances(state).food).toBe(10000);
+    expect(transactions(state)[0].deleted).toBe(true);
+  });
   it("credit card payments and account transfers do not alter budget money", async () => {
     updates.added = [
       raw({
@@ -487,7 +515,7 @@ describe("bank reconciliation", () => {
     expect(transactions(state)[0].allocations).toEqual([]);
     expect(balances(state).food).toBe(10000);
   });
-  it("keeps an edited bank amount when the posted amount changes", async () => {
+  it("updates a posted tip while preserving an edited note", async () => {
     updates.added = [raw()];
     await sync();
     const tx = transactions(state)[0];
@@ -512,10 +540,84 @@ describe("bank reconciliation", () => {
       modified: [raw({ amount: 12, pending: false })],
     };
     await sync();
-    expect(transactions(state)[0].amount).toBe(1000);
+    expect(transactions(state)[0].amount).toBe(1200);
+    expect(transactions(state)[0].allocations).toEqual([
+      { envelopeId: "food", amount: -1200 },
+    ]);
+    expect(balances(state).food).toBe(8800);
     expect(transactions(state)[0].needsReview).toBeUndefined();
     expect(transactions(state)[0].note).toBe("Keep my note");
     expect(transactions(state)[0].tags).toEqual([]);
+  });
+  it("updates an edited pending purchase when Plaid replaces it with a posted amount", async () => {
+    updates.added = [raw()];
+    await sync();
+    const tx = transactions(state)[0];
+    state = applyOperation(
+      state,
+      makeOperation(
+        state,
+        [
+          {
+            ...tx,
+            note: "Keep my note",
+            bankOriginal: { ...tx.bankOriginal, edited: true },
+          },
+        ],
+        "phone",
+        "Edit pending purchase",
+      ),
+    );
+    updates = {
+      ...updates,
+      added: [
+        raw({
+          transaction_id: "posted1",
+          pending_transaction_id: "pending1",
+          amount: 12,
+          pending: false,
+        }),
+      ],
+      removed: [{ transaction_id: "pending1" }],
+    };
+    await sync();
+    expect(transactions(state)).toHaveLength(1);
+    expect(transactions(state)[0].sourceId).toBe("item1:posted1");
+    expect(transactions(state)[0].note).toBe("Keep my note");
+    expect(transactions(state)[0].amount).toBe(1200);
+    expect(balances(state).food).toBe(8800);
+  });
+  it("preserves an amount explicitly changed by the user", async () => {
+    updates.added = [raw()];
+    await sync();
+    const tx = transactions(state)[0];
+    state = applyOperation(
+      state,
+      makeOperation(
+        state,
+        [
+          {
+            ...tx,
+            amount: 1100,
+            allocations: [{ envelopeId: "food", amount: -1100 }],
+            bankOriginal: { ...tx.bankOriginal, edited: true },
+          },
+        ],
+        "phone",
+        "Edit amount",
+      ),
+    );
+    updates = {
+      ...updates,
+      added: [],
+      modified: [raw({ amount: 12, pending: false })],
+    };
+    await sync();
+    expect(transactions(state)[0].amount).toBe(1100);
+    expect(transactions(state)[0].allocations).toEqual([
+      { envelopeId: "food", amount: -1100 },
+    ]);
+    expect(balances(state).food).toBe(8900);
   });
   it("counts a bank purchase even when a matching manual purchase exists", async () => {
     const t: Transaction = {

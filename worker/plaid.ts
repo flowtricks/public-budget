@@ -959,6 +959,33 @@ async function syncConnection(env: Env, c: Connection) {
               ];
     }
     if (old) {
+      const updatedAllocations = () => {
+        if (old.allocations.length === 1)
+          return [
+            {
+              ...old.allocations[0],
+              amount: type === "expense" ? -amount : amount,
+            },
+          ];
+        if (old.allocations.length < 2 || old.amount === amount)
+          return old.allocations;
+        let remaining = amount;
+        const sign = type === "expense" ? -1 : 1;
+        return old.allocations.map((allocation, index) => {
+          const share =
+            index === old.allocations.length - 1
+              ? remaining
+              : Math.min(
+                  remaining,
+                  Math.round(
+                    (amount * Math.abs(allocation.amount)) /
+                      Math.max(1, old.amount),
+                  ),
+                );
+          remaining -= share;
+          return { ...allocation, amount: sign * share };
+        });
+      };
       const changedByUser =
         old.bankOriginal &&
         (old.amount !== old.bankOriginal.amount ||
@@ -967,7 +994,7 @@ async function syncConnection(env: Env, c: Connection) {
           old.note ||
           withoutAutomaticTag(old.tags).length ||
           old.bankOriginal.edited);
-      if (changedByUser)
+      if (changedByUser) {
         tx = {
           ...old,
           tags: withoutAutomaticTag(old.tags),
@@ -977,34 +1004,17 @@ async function syncConnection(env: Env, c: Connection) {
           updatedAt: tx.updatedAt,
           needsReview: undefined,
         };
-      else if (old.allocations.length && !payment && !movement) {
-        tx.allocations =
-          old.allocations.length === 1
-            ? [
-                {
-                  ...old.allocations[0],
-                  amount: type === "expense" ? -amount : amount,
-                },
-              ]
-            : old.allocations;
-        if (old.allocations.length > 1 && old.amount !== amount) {
-          let remaining = amount;
-          const sign = type === "expense" ? -1 : 1;
-          tx.allocations = old.allocations.map((allocation, index) => {
-            const share =
-              index === old.allocations.length - 1
-                ? remaining
-                : Math.min(
-                    remaining,
-                    Math.round(
-                      (amount * Math.abs(allocation.amount)) /
-                        Math.max(1, old.amount),
-                    ),
-                  );
-            remaining -= share;
-            return { ...allocation, amount: sign * share };
-          });
+        if (
+          old.amount === old.bankOriginal?.amount &&
+          old.type === type &&
+          !payment &&
+          !movement
+        ) {
+          tx.amount = amount;
+          tx.allocations = updatedAllocations();
         }
+      } else if (old.allocations.length && !payment && !movement) {
+        tx.allocations = updatedAllocations();
       }
       tx.deleted = old.deleted && !old.bankOriginal?.removedByBank;
       tx.excluded =
