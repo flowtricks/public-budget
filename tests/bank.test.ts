@@ -405,6 +405,67 @@ describe("bank reconciliation", () => {
     expect(transactions(state)[0].tags).toEqual([]);
     expect(cursor).toBe("cursor1");
   });
+  it("keeps a pending purchase in its original list position when it posts", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-10-07T12:00:00Z"));
+      updates.added = [raw()];
+      await sync();
+      const first = transactions(state)[0];
+      expect(first.firstSeenAt).toBe("2026-10-07T12:00:00.000Z");
+      vi.setSystemTime(new Date("2026-10-07T12:00:30Z"));
+      state = applyOperation(
+        state,
+        makeOperation(
+          state,
+          [
+            {
+              ...first,
+              note: "Keep my note",
+              updatedAt: new Date().toISOString(),
+              bankOriginal: { ...first.bankOriginal, edited: true },
+            },
+          ],
+          "phone",
+          "Edit pending purchase",
+        ),
+      );
+
+      vi.setSystemTime(new Date("2026-10-07T12:01:00Z"));
+      updates.added = [
+        raw({ transaction_id: "pending2", merchant_name: "Second store" }),
+      ];
+      await sync();
+      expect(transactions(state).map((tx) => tx.id)).toEqual([
+        "bank:item1:pending2",
+        first.id,
+      ]);
+
+      vi.setSystemTime(new Date("2026-10-07T12:02:00Z"));
+      updates.added = [
+        raw({
+          transaction_id: "posted1",
+          pending_transaction_id: "pending1",
+          pending: false,
+          amount: 12,
+          date: "2026-10-08",
+        }),
+      ];
+      updates.removed = [{ transaction_id: "pending1" }];
+      await sync();
+      expect(transactions(state).map((tx) => tx.id)).toEqual([
+        "bank:item1:pending2",
+        first.id,
+      ]);
+      expect(transactions(state)[1].firstSeenAt).toBe(first.firstSeenAt);
+      expect(transactions(state)[1].note).toBe("Keep my note");
+      expect(transactions(state)[1].date).toBe(first.date);
+      expect(transactions(state)[1].bankOriginal?.date).toBe("2026-10-08");
+      expect(transactions(state)[1].amount).toBe(1200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("a removed pending charge reverses its deduction", async () => {
     updates.added = [raw()];
     await sync();

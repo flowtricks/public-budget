@@ -870,6 +870,9 @@ async function syncConnection(env: Env, c: Connection) {
     const amount = Math.round(Math.abs(raw.amount) * 100);
     const payee = raw.merchant_name || raw.name || "Bank transaction";
     const date = raw.authorized_date || raw.date;
+    const firstSeenDate =
+      old?.firstSeenDate ||
+      (old?.pending || raw.pending ? old?.date || date : undefined);
     const category = raw.personal_finance_category?.detailed || "";
     const card = accounts.get(raw.account_id);
     const payment =
@@ -919,7 +922,7 @@ async function syncConnection(env: Env, c: Connection) {
       type,
       payee,
       amount,
-      date,
+      date: firstSeenDate || date,
       note: "",
       tags: [],
       allocations:
@@ -938,6 +941,9 @@ async function syncConnection(env: Env, c: Connection) {
       sourceId,
       sourceAccount: c.name,
       bankOriginal: original,
+      firstSeenAt:
+        old?.firstSeenAt || old?.updatedAt || new Date().toISOString(),
+      ...(firstSeenDate ? { firstSeenDate } : {}),
       updatedAt: new Date().toISOString(),
     };
     if (refund && originalPurchase && !old) {
@@ -990,7 +996,7 @@ async function syncConnection(env: Env, c: Connection) {
         old.bankOriginal &&
         (old.amount !== old.bankOriginal.amount ||
           old.payee !== old.bankOriginal.payee ||
-          old.date !== old.bankOriginal.date ||
+          old.date !== (old.firstSeenDate || old.bankOriginal.date) ||
           old.note ||
           withoutAutomaticTag(old.tags).length ||
           old.bankOriginal.edited);
@@ -1001,6 +1007,8 @@ async function syncConnection(env: Env, c: Connection) {
           sourceId,
           pending: !!raw.pending,
           bankOriginal: { ...original, edited: true },
+          firstSeenAt: tx.firstSeenAt,
+          ...(firstSeenDate ? { firstSeenDate } : {}),
           updatedAt: tx.updatedAt,
           needsReview: undefined,
         };

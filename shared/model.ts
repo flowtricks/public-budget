@@ -57,6 +57,8 @@ export const TransactionSchema = z
     needsReview: z.string().max(1000).optional(),
     importBatch: z.string().max(160).optional(),
     relatedTransactionId: id.optional(),
+    firstSeenAt: z.string().optional(),
+    firstSeenDate: z.string().optional(),
     updatedAt: z.string(),
   })
   .strict();
@@ -150,7 +152,9 @@ export const transactions = (s: State) =>
     .sort(
       (a, b) =>
         b.date.localeCompare(a.date) ||
-        b.updatedAt.localeCompare(a.updatedAt) ||
+        (b.firstSeenAt || b.updatedAt).localeCompare(
+          a.firstSeenAt || a.updatedAt,
+        ) ||
         a.id.localeCompare(b.id),
     );
 export const isLegacyDuplicateExclusion = (transaction: Transaction) =>
