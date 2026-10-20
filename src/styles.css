@@ -3555,6 +3555,11 @@ svg {
   align-self: flex-start;
   font-size: 0.857143rem;
 }
+.structured-form > .button.refund-action {
+  align-self: stretch;
+  white-space: normal;
+  text-align: center;
+}
 .transaction-delete-footer {
   display: flex;
   justify-content: center;

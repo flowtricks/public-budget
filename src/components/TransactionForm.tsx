@@ -417,24 +417,6 @@ export default function TransactionForm({
               />
             </Field>
           </section>
-          {initial?.source === "bank" && !isRefund && (
-            <label className="check-row bank-budget-exclusion">
-              <input
-                type="checkbox"
-                checked={excludeFromBudget}
-                onChange={(event) =>
-                  setExcludeFromBudget(event.target.checked)
-                }
-              />
-              <span>
-                Exclude from budget
-                <small>
-                  Use for credit card payments and transfers between your
-                  accounts.
-                </small>
-              </span>
-            </label>
-          )}
           {excluded ? (
             <p className="bank-budget-exclusion-note">
               This transaction will not change your envelope balances.
@@ -804,7 +786,7 @@ export default function TransactionForm({
           {initial?.type === "expense" && !initial.deleted && !isRefund && (
             <button
               type="button"
-              className="button secondary"
+              className="button secondary refund-action"
               onClick={() => {
                 setIsRefund(true);
                 setDate(today(settings(state).timezone));
@@ -814,6 +796,22 @@ export default function TransactionForm({
             >
               Record a refund for this purchase
             </button>
+          )}
+          {initial?.source === "bank" && !isRefund && (
+            <label className="check-row bank-budget-exclusion">
+              <input
+                type="checkbox"
+                checked={excludeFromBudget}
+                onChange={(event) => setExcludeFromBudget(event.target.checked)}
+              />
+              <span>
+                Exclude from budget
+                <small>
+                  Use for credit card payments and transfers between your
+                  accounts.
+                </small>
+              </span>
+            </label>
           )}
           {deleteConfirm && (
             <div className="notice danger">
