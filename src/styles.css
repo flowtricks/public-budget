@@ -108,6 +108,7 @@ input,
 select,
 textarea {
   width: 100%;
+  font-size: max(1rem, 16px);
   min-width: 0;
   border: 1px solid var(--line-strong);
   border-radius: 0.642857rem;
@@ -778,7 +779,7 @@ svg {
 .search-field input {
   border: 0;
   box-shadow: none;
-  font-size: 0.857143rem;
+  font-size: 1rem;
   background: none;
   padding: 0.785714rem 0;
 }
@@ -867,7 +868,7 @@ svg {
   outline: 0;
   background: transparent;
   color: var(--text);
-  font-size: 0.857143rem;
+  font-size: 1rem;
   box-shadow: none;
 }
 .tag-filter-search input:focus {
@@ -1396,7 +1397,7 @@ svg {
   color: var(--panel);
 }
 .calendar input {
-  font-size: 0.785714rem;
+  font-size: 1rem;
 }
 .manager-list {
   display: flex;
@@ -1423,7 +1424,7 @@ svg {
   min-width: 0;
 }
 .manager-fields > input {
-  font-size: 0.857143rem;
+  font-size: 1rem;
   padding: 0.571429rem 0.642857rem;
 }
 .manager-options {
@@ -1433,9 +1434,9 @@ svg {
   margin-top: 0.5rem;
 }
 .manager-options select {
-  width: 5.357143rem;
+  width: 7rem;
   padding: 0.285714rem;
-  font-size: 0.714286rem;
+  font-size: 1rem;
 }
 .manager-options small {
   font-size: 0.642857rem;
@@ -1446,7 +1447,7 @@ svg {
   font-size: 0.642857rem;
 }
 .manager-row > .field input {
-  font-size: 0.857143rem;
+  font-size: 1rem;
   padding: 0.642857rem;
 }
 .manager-row.is-archived {
@@ -2614,7 +2615,7 @@ svg {
   margin-top: 0.714286rem;
 }
 .manager-fields > .field input {
-  font-size: 0.857143rem;
+  font-size: 1rem;
 }
 .conflict-comparison {
   display: grid;
@@ -4569,6 +4570,7 @@ svg {
 .tag-picker-control {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 0.357143rem;
   min-width: 0;
@@ -4577,13 +4579,13 @@ svg {
   cursor: text;
 }
 .structured-form .form-row-group .tag-picker-control input {
-  flex: 1 1 6rem;
-  width: 0;
+  flex: 0 1 8rem;
+  width: 8rem;
   min-width: 5rem;
   min-height: 1.714286rem;
   padding: 0.142857rem 0;
-  text-align: left;
-  font-size: 0.928571rem;
+  text-align: right;
+  font-size: 1rem;
   box-shadow: none;
 }
 .structured-form .form-row-group .tag-picker-control input:placeholder-shown {
