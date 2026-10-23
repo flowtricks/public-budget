@@ -4923,3 +4923,10 @@ svg {
   background: transparent;
   pointer-events: none;
 }
+
+@media (max-width: 700px) {
+  .modal::backdrop {
+    background: var(--sheet-bg);
+    backdrop-filter: none;
+  }
+}

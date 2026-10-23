@@ -413,6 +413,15 @@ export default function TransactionForm({
                 placeholder="0.00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
+                onFocus={(event) => {
+                  const field = event.currentTarget;
+                  requestAnimationFrame(() => {
+                    if (document.activeElement === field) {
+                      const end = field.value.length;
+                      field.setSelectionRange(end, end);
+                    }
+                  });
+                }}
                 required
               />
             </Field>
