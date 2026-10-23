@@ -15,6 +15,7 @@ describe("payee logos", () => {
 
   it("uses bundled logos for public brands", () => {
     expect(payeeLogo("Subway")).toBe("/payee-logos/subway-choicemark.png");
+    expect(payeeLogo("Taco Bell")).toBe("/payee-logos/tacobell.com.png");
     expect(payeeLogo("Protective Life")).toBe("/payee-logos/protective-life.png");
     expect(payeeLogo("American Water")).toBe("/payee-logos/amwater.com.png");
     expect(payeeLogo("Waste Management")).toBe("/payee-logos/wm.com.jpg");
