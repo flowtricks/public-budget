@@ -20,8 +20,9 @@ export default function TagPicker({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const root = useRef<HTMLDivElement>(null);
-  const control = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const touchStart = useRef<{ id: number; x: number; y: number } | null>(null);
+  const touchSelected = useRef(false);
   const listId = useId();
   const selectedKeys = new Set(selected.map(normalizeTag));
   const known = new Map<string, string>();
@@ -87,7 +88,6 @@ export default function TagPicker({
     >
       <div
         className="tag-picker-control"
-        ref={control}
         onClick={() => input.current?.focus()}
       >
         {selected.map((tag) => (
@@ -182,7 +182,7 @@ export default function TagPicker({
         </button>
       </div>
       {showOptions && (
-        <DropdownPopover anchor={control} className="tag-picker-popover">
+        <DropdownPopover anchor={input} className="tag-picker-popover">
           <div
             className="tag-picker-options"
             role="listbox"
@@ -199,8 +199,42 @@ export default function TagPicker({
                 key={`${choice.create ? "new" : "existing"}-${choice.label}`}
                 onPointerDown={(event) => {
                   if (event.pointerType === "mouse") event.preventDefault();
+                  else
+                    touchStart.current = {
+                      id: event.pointerId,
+                      x: event.clientX,
+                      y: event.clientY,
+                    };
                 }}
-                onClick={() => add(choice.label)}
+                onPointerMove={(event) => {
+                  const start = touchStart.current;
+                  if (
+                    start?.id === event.pointerId &&
+                    Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10
+                  )
+                    touchStart.current = null;
+                }}
+                onPointerUp={(event) => {
+                  const start = touchStart.current;
+                  touchStart.current = null;
+                  if (start?.id !== event.pointerId) return;
+                  touchSelected.current = true;
+                  add(choice.label);
+                  window.setTimeout(() => {
+                    touchSelected.current = false;
+                  }, 350);
+                }}
+                onPointerCancel={() => {
+                  touchStart.current = null;
+                }}
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (touchSelected.current) {
+                    touchSelected.current = false;
+                    return;
+                  }
+                  add(choice.label);
+                }}
               >
                 {choice.create && <Plus size={15} aria-hidden="true" />}
                 <span className="tag-picker-chip tag-picker-suggestion">

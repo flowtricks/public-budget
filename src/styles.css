@@ -4907,6 +4907,11 @@ svg {
   max-height: var(--menu-height);
   color: var(--text);
 }
+.calendar-popover.anchored-popover {
+  min-width: min(19rem, calc(100vw - 24px));
+  padding: 1.071429rem;
+  overflow-y: auto;
+}
 .anchored-popover .combo-options,
 .transaction-filter .anchored-popover .combo-options {
   max-height: min(18rem, calc(var(--menu-height) - 0.571428rem - 2px));

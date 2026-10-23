@@ -129,6 +129,7 @@ export function DatePicker({
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(new Date(value + "T12:00:00"));
   const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     function close(e: MouseEvent) {
       if (!root.current?.contains(e.target as Node)) setOpen(false);
@@ -143,6 +144,7 @@ export function DatePicker({
   return (
     <div className="date-control" ref={root}>
       <button
+        ref={trigger}
         type="button"
         className="date-trigger"
         aria-expanded={open}
@@ -156,7 +158,7 @@ export function DatePicker({
         })}
       </button>
       {open && (
-        <div className="calendar">
+        <DropdownPopover anchor={trigger} className="calendar calendar-popover">
           <div className="calendar-head">
             <button
               type="button"
@@ -214,7 +216,7 @@ export function DatePicker({
               }
             }}
           />
-        </div>
+        </DropdownPopover>
       )}
     </div>
   );
