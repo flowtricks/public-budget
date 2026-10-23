@@ -1,8 +1,7 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, Plus, X } from "lucide-react";
 import { normalizeTag } from "../lib/budget-index";
 import { isAutomaticTag } from "../../shared/automatic-import";
-import DropdownPopover from "./DropdownPopover";
 
 export default function TagPicker({
   selected,
@@ -21,6 +20,7 @@ export default function TagPicker({
   const [active, setActive] = useState(-1);
   const root = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
   const touchStart = useRef<{ id: number; x: number; y: number } | null>(null);
   const touchSelected = useRef(false);
   const listId = useId();
@@ -54,6 +54,39 @@ export default function TagPicker({
           ...matches.map((label) => ({ label, create: false })),
         ];
   const showOptions = open && (choices.length > 0 || !!typed);
+
+  useLayoutEffect(() => {
+    const popup = menu.current;
+    const field = input.current;
+    const picker = root.current;
+    if (!showOptions || !popup || !field || !picker) return;
+    const position = () => {
+      const fieldRect = field.getBoundingClientRect();
+      const pickerRect = picker.getBoundingClientRect();
+      const viewport = window.visualViewport;
+      const viewportTop = viewport?.offsetTop ?? 0;
+      const viewportBottom = viewportTop + (viewport?.height ?? innerHeight);
+      const above = Math.max(0, fieldRect.top - viewportTop);
+      const below = Math.max(0, viewportBottom - fieldRect.bottom);
+      const upwards = above >= popup.scrollHeight + 4 || above > below;
+      const space = upwards ? above : below;
+      popup.style.maxHeight = `${Math.max(0, space - 8)}px`;
+      popup.style.top = `${fieldRect.top - pickerRect.top + (upwards ? -popup.offsetHeight - 4 : fieldRect.height + 4)}px`;
+    };
+    position();
+    const observer = new ResizeObserver(position);
+    observer.observe(field);
+    observer.observe(popup);
+    window.addEventListener("resize", position);
+    window.visualViewport?.addEventListener("resize", position);
+    window.visualViewport?.addEventListener("scroll", position);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", position);
+      window.visualViewport?.removeEventListener("resize", position);
+      window.visualViewport?.removeEventListener("scroll", position);
+    };
+  }, [showOptions]);
 
   useEffect(() => {
     if (!open) return;
@@ -182,7 +215,7 @@ export default function TagPicker({
         </button>
       </div>
       {showOptions && (
-        <DropdownPopover anchor={input} className="tag-picker-popover">
+        <div ref={menu} className="tag-picker-popover">
           <div
             className="tag-picker-options"
             role="listbox"
@@ -251,7 +284,7 @@ export default function TagPicker({
               </p>
             )}
           </div>
-        </DropdownPopover>
+        </div>
       )}
     </div>
   );

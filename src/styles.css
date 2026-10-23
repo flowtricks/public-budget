@@ -4566,6 +4566,7 @@ svg {
 .tag-picker {
   position: relative;
   min-width: 0;
+  z-index: 5;
 }
 .tag-picker-control {
   display: flex;
@@ -4639,9 +4640,19 @@ svg {
 .tag-picker-chevron[aria-expanded="true"] svg {
   transform: rotate(180deg);
 }
-.tag-picker-options {
-  max-height: min(18rem, calc(var(--menu-height) - 0.571428rem - 2px));
+.tag-picker-popover {
+  position: absolute;
+  right: 0;
+  width: min(19rem, calc(100vw - 2rem));
+  padding: 0.285714rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.642857rem;
+  background: var(--panel);
+  box-shadow: 0 6px 22px #0002;
   overflow-y: auto;
+  text-align: left;
+}
+.tag-picker-options {
   overscroll-behavior: contain;
 }
 .tag-picker-option {
