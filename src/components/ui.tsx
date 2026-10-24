@@ -4,7 +4,14 @@ import {
   useIsPresent,
   useReducedMotion,
 } from "motion/react";
-import { useEffect, useLayoutEffect, useRef, useState, useId, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useId,
+  type ReactNode,
+} from "react";
 import {
   X,
   ChevronDown,
@@ -14,6 +21,7 @@ import {
   Check,
 } from "lucide-react";
 import DropdownPopover from "./DropdownPopover";
+import ModalPopup from "./ModalPopup";
 export function Modal({
   title,
   subtitle,
@@ -41,7 +49,9 @@ export function Modal({
     const el = ref.current;
     el?.showModal();
     if (initialFocus)
-      el?.querySelector<HTMLElement>(initialFocus)?.focus({ preventScroll: true });
+      el?.querySelector<HTMLElement>(initialFocus)?.focus({
+        preventScroll: true,
+      });
     return () => el?.close();
   }, []);
   return (
@@ -129,14 +139,6 @@ export function DatePicker({
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(new Date(value + "T12:00:00"));
   const root = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    function close(e: MouseEvent) {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, []);
   const year = cursor.getFullYear(),
     month = cursor.getMonth();
   const first = new Date(year, month, 1).getDay();
@@ -144,11 +146,13 @@ export function DatePicker({
   return (
     <div className="date-control" ref={root}>
       <button
-        ref={trigger}
         type="button"
         className="date-trigger"
         aria-expanded={open}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open) setCursor(new Date(value + "T12:00:00"));
+          setOpen(!open);
+        }}
       >
         <CalendarDays size={16} />
         {new Date(value + "T12:00:00").toLocaleDateString("en-US", {
@@ -157,67 +161,82 @@ export function DatePicker({
           year: "numeric",
         })}
       </button>
-      {open && (
-        <DropdownPopover anchor={trigger} className="calendar calendar-popover">
-          <div className="calendar-head">
-            <button
-              type="button"
-              aria-label="Previous month"
-              onClick={() => setCursor(new Date(year, month - 1, 1))}
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <strong>
-              {cursor.toLocaleDateString("en-US", {
-                month: "long",
-                year: "numeric",
-              })}
-            </strong>
-            <button
-              type="button"
-              aria-label="Next month"
-              onClick={() => setCursor(new Date(year, month + 1, 1))}
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-          <div className="calendar-grid">
-            {"SMTWTFS".split("").map((d, i) => (
-              <span key={i}>{d}</span>
-            ))}
-            {Array.from({ length: first }, (_, i) => (
-              <i key={"blank" + i} />
-            ))}
-            {Array.from({ length: days }, (_, i) => {
-              const d = `${year}-${String(month + 1).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`;
-              return (
-                <button
-                  type="button"
-                  key={d}
-                  className={d === value ? "selected" : ""}
-                  onClick={() => {
-                    onChange(d);
-                    setOpen(false);
-                  }}
-                >
-                  {i + 1}
-                </button>
-              );
+      <ModalPopup
+        anchor={root}
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Choose date"
+        className="calendar-modal"
+      >
+        <div className="modal-popup-heading">
+          <h3>Choose date</h3>
+          <button
+            type="button"
+            aria-label="Close date chooser"
+            onClick={() => setOpen(false)}
+          >
+            <X size={19} />
+          </button>
+        </div>
+        <div className="calendar-head">
+          <button
+            type="button"
+            aria-label="Previous month"
+            onClick={() => setCursor(new Date(year, month - 1, 1))}
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <strong>
+            {cursor.toLocaleDateString("en-US", {
+              month: "long",
+              year: "numeric",
             })}
-          </div>
-          <input
-            aria-label="Enter date"
-            type="date"
-            value={value}
-            onChange={(e) => {
-              if (e.target.value) {
-                onChange(e.target.value);
-                setOpen(false);
-              }
-            }}
-          />
-        </DropdownPopover>
-      )}
+          </strong>
+          <button
+            type="button"
+            aria-label="Next month"
+            onClick={() => setCursor(new Date(year, month + 1, 1))}
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+        <div className="calendar-grid">
+          {"SMTWTFS".split("").map((d, i) => (
+            <span key={i}>{d}</span>
+          ))}
+          {Array.from({ length: first }, (_, i) => (
+            <i key={"blank" + i} />
+          ))}
+          {Array.from({ length: days }, (_, i) => {
+            const d = `${year}-${String(month + 1).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`;
+            return (
+              <button
+                type="button"
+                key={d}
+                className={d === value ? "selected" : ""}
+                data-popup-autofocus={d === value || undefined}
+                onClick={() => {
+                  onChange(d);
+                  setOpen(false);
+                }}
+              >
+                {i + 1}
+              </button>
+            );
+          })}
+        </div>
+        <input
+          aria-label="Enter date"
+          type="date"
+          value={value}
+          onChange={(e) => {
+            if (e.target.value) {
+              onChange(e.target.value);
+              setOpen(false);
+            }
+          }}
+        />
+      </ModalPopup>
     </div>
   );
 }
@@ -247,7 +266,9 @@ export function Combo({
   const root = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const optionList = useRef<HTMLDivElement>(null);
-  const optionPointer = useRef<{ id: number; x: number; y: number } | null>(null);
+  const optionPointer = useRef<{ id: number; x: number; y: number } | null>(
+    null,
+  );
   const uid = useId();
   const listId = `${id}-${uid}`;
   const matches = [...new Set(options)]
@@ -393,7 +414,10 @@ export function Combo({
                   const start = optionPointer.current;
                   if (!start || start.id !== event.pointerId) return;
                   if (
-                    Math.hypot(event.clientX - start.x, event.clientY - start.y) >= 10
+                    Math.hypot(
+                      event.clientX - start.x,
+                      event.clientY - start.y,
+                    ) >= 10
                   ) {
                     optionPointer.current = null;
                     return;

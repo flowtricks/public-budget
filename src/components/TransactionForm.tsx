@@ -15,6 +15,7 @@ import Select from "./Select";
 import PayeeLogo from "./PayeeLogo";
 import CardSource from "./CardSource";
 import TagPicker from "./TagPicker";
+import ModalPopup from "./ModalPopup";
 import {
   amountText,
   balances,
@@ -122,6 +123,8 @@ export default function TransactionForm({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const [excludeFromBudget, setExcludeFromBudget] = useState(
     !!initial?.excluded,
   );
@@ -303,6 +306,8 @@ export default function TransactionForm({
   }
   async function remove() {
     if (!initial) return;
+    setDeleteError("");
+    setDeleting(true);
     try {
       await save(
         [
@@ -325,7 +330,11 @@ export default function TransactionForm({
       onSaved("Transaction deleted");
       onClose();
     } catch (e) {
-      setError(String(e));
+      setDeleteError(
+        e instanceof Error ? e.message : "Could not delete transaction.",
+      );
+    } finally {
+      setDeleting(false);
     }
   }
   const allPayees = recentTransactionPayees(
@@ -343,7 +352,7 @@ export default function TransactionForm({
               ? "Edit transaction"
               : "Add transaction"
       }
-      onClose={onClose}
+      onClose={() => (deleteConfirm ? setDeleteConfirm(false) : onClose())}
       wide
       className="transaction-sheet"
       initialFocus={initial ? undefined : '[aria-label="Payee"]'}
@@ -822,25 +831,6 @@ export default function TransactionForm({
               </span>
             </label>
           )}
-          {deleteConfirm && (
-            <div className="notice danger">
-              <p>Delete this transaction and reverse its envelope changes?</p>
-              <button
-                type="button"
-                className="button danger-button"
-                onClick={remove}
-              >
-                Yes, delete transaction
-              </button>
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => setDeleteConfirm(false)}
-              >
-                Keep it
-              </button>
-            </div>
-          )}
         </div>
         {initial && !isRefund && !initial.deleted && (
           <div className="transaction-delete-footer">
@@ -848,13 +838,54 @@ export default function TransactionForm({
               type="button"
               className="delete-round"
               aria-label="Delete transaction"
-              onClick={() => setDeleteConfirm(true)}
+              onClick={() => {
+                setDeleteError("");
+                setDeleteConfirm(true);
+              }}
             >
               <Trash2 size={23} />
             </button>
           </div>
         )}
       </form>
+      {initial && (
+        <ModalPopup
+          anchor={formRef}
+          open={deleteConfirm}
+          onClose={() => setDeleteConfirm(false)}
+          title="Delete transaction?"
+          role="alertdialog"
+          className="transaction-delete-popup"
+        >
+          <h3>Delete transaction?</h3>
+          <div className="transaction-delete-summary">
+            <strong>{initial.payee || "Transaction"}</strong>
+            <span>{moneyText(initial.amount)}</span>
+          </div>
+          <p>Delete this transaction and reverse its envelope changes?</p>
+          {deleteError && (
+            <p className="error" role="alert">
+              {deleteError}
+            </p>
+          )}
+          <button
+            type="button"
+            className="button danger-button"
+            onClick={remove}
+            disabled={deleting}
+          >
+            {deleting ? "Deleting…" : "Yes, delete transaction"}
+          </button>
+          <button
+            type="button"
+            className="text-button"
+            data-popup-autofocus
+            onClick={() => setDeleteConfirm(false)}
+          >
+            Keep it
+          </button>
+        </ModalPopup>
+      )}
     </Modal>
   );
 }
