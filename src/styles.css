@@ -812,26 +812,63 @@ svg {
   width: 9.285714rem;
   flex: none;
 }
+.tag-filter:has(.has-selection) {
+  width: 16rem;
+}
+.tag-filter-control {
+  position: relative;
+}
 .tag-filter-trigger {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.571429rem;
   width: 100%;
   min-height: 2.857143rem;
-  padding: 0.642857rem 0.857143rem;
+  padding: 0.642857rem 2.5rem 0.642857rem 0.857143rem;
   border: 1px solid var(--line);
   border-radius: 0.571429rem;
   background: var(--budget-row);
   text-align: left;
   font-size: 0.857143rem;
 }
+.tag-filter-control.has-selection .tag-filter-trigger {
+  padding-right: 5.2rem;
+}
+.tag-filter-label {
+  flex: none;
+}
+.tag-filter-value {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--budget-positive);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .tag-filter-trigger[aria-expanded="true"] svg {
   transform: rotate(180deg);
 }
 .tag-filter-trigger svg {
+  position: absolute;
+  right: 0.857143rem;
   flex: none;
   color: var(--muted);
+}
+.tag-filter-clear {
+  position: absolute;
+  top: 50%;
+  right: 2.45rem;
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  color: var(--muted);
+  transform: translateY(-50%);
+}
+.tag-filter-clear:hover {
+  background: var(--budget-heading);
+  color: var(--text);
 }
 .tag-filter-popover {
   position: absolute;
@@ -883,46 +920,40 @@ svg {
   display: flex;
   align-items: center;
   gap: 0.714286rem;
+  width: 100%;
   min-height: 2.857143rem;
   padding: 0.571429rem 0.714286rem;
+  border: 0;
   border-radius: 0.357143rem;
+  background: transparent;
+  color: var(--text);
   cursor: pointer;
   font-size: 0.928571rem;
+  text-align: left;
 }
 .tag-filter-option:hover,
-.tag-filter-option:focus-within {
+.tag-filter-option:focus-visible,
+.tag-filter-option[aria-selected="true"] {
   background: var(--budget-heading);
 }
-.tag-filter-option input {
+.tag-filter-check {
+  display: grid;
+  place-items: center;
   width: 1.142857rem;
   height: 1.142857rem;
-  margin: 0;
   flex: none;
-  accent-color: var(--budget-positive);
+  border: 1px solid var(--line-strong);
+  border-radius: 0.285714rem;
+}
+.tag-filter-option[aria-selected="true"] .tag-filter-check {
+  border-color: var(--budget-positive);
+  background: var(--budget-positive);
+  color: var(--sheet-bg);
 }
 .tag-filter-empty {
   padding: 0.714286rem;
   color: var(--muted);
   font-size: 0.857143rem;
-}
-.tag-filter-actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.571429rem;
-  padding: 0.428571rem;
-  border-top: 1px solid var(--line);
-}
-.tag-filter-actions button {
-  padding: 0.357143rem 0.5rem;
-  border-radius: 0.357143rem;
-  font-size: 0.857143rem;
-}
-.tag-filter-actions button:last-child {
-  margin-left: auto;
-  color: var(--budget-positive);
-}
-.tag-filter-actions button:hover {
-  background: var(--budget-heading);
 }
 .day-group {
   margin-bottom: 1.714286rem;
@@ -2287,6 +2318,9 @@ svg {
   .tag-filter {
     width: 100%;
   }
+  .tag-filter:has(.has-selection) {
+    width: 100%;
+  }
   .day-label {
     font-size: 0.714286rem;
   }
@@ -3105,6 +3139,9 @@ svg {
 }
 .budget-content .tag-filter {
   width: 9.285714rem;
+}
+.budget-content .tag-filter:has(.has-selection) {
+  width: 16rem;
 }
 .budget-content .search-field {
   flex: 1;
@@ -4014,6 +4051,9 @@ svg {
     width: 100%;
   }
   .budget-content .tag-filter {
+    width: 100%;
+  }
+  .budget-content .tag-filter:has(.has-selection) {
     width: 100%;
   }
   .budget-content .transaction-filter .select-trigger {
