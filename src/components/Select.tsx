@@ -24,7 +24,12 @@ export default function Select<T extends string>({
   const trigger = useRef<HTMLButtonElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const optionList = useRef<HTMLDivElement>(null);
-  const touchStart = useRef<{ id: number; x: number; y: number } | null>(null);
+  const touchStart = useRef<{
+    id: number;
+    x: number;
+    y: number;
+    value: T;
+  } | null>(null);
   const touchSelected = useRef(false);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -64,11 +69,14 @@ export default function Select<T extends string>({
         ?.scrollIntoView({ block: "nearest" });
   }, [open, active, query]);
 
-  function choose(index: number) {
-    if (!visibleOptions[index]) return;
-    onChange(visibleOptions[index].value);
+  function chooseValue(next: T) {
+    onChange(next);
     setOpen(false);
     trigger.current?.focus({ preventScroll: true });
+  }
+
+  function choose(index: number) {
+    if (visibleOptions[index]) chooseValue(visibleOptions[index].value);
   }
 
   return (
@@ -193,6 +201,27 @@ export default function Select<T extends string>({
             role="listbox"
             aria-label={label}
             className="combo-options"
+            onPointerMove={(event) => {
+              const start = touchStart.current;
+              if (
+                start?.id === event.pointerId &&
+                Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10
+              )
+                touchStart.current = null;
+            }}
+            onPointerUp={(event) => {
+              const start = touchStart.current;
+              touchStart.current = null;
+              if (start?.id !== event.pointerId) return;
+              touchSelected.current = true;
+              chooseValue(start.value);
+              window.setTimeout(() => {
+                touchSelected.current = false;
+              }, 350);
+            }}
+            onPointerCancel={() => {
+              touchStart.current = null;
+            }}
           >
             {visibleOptions.map((option, index) => (
               <button
@@ -206,33 +235,18 @@ export default function Select<T extends string>({
                 onPointerDown={(event) => {
                   // Keep keyboard focus in the search field for mouse clicks.
                   if (event.pointerType === "mouse") event.preventDefault();
-                  else
+                  else {
+                    // The keyboard can move the menu before pointerup on iOS.
+                    // Capture on the stable list and keep the pressed value.
+                    event.preventDefault();
                     touchStart.current = {
                       id: event.pointerId,
                       x: event.clientX,
                       y: event.clientY,
+                      value: option.value,
                     };
-                }}
-                onPointerMove={(event) => {
-                  const start = touchStart.current;
-                  if (
-                    start?.id === event.pointerId &&
-                    Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10
-                  )
-                    touchStart.current = null;
-                }}
-                onPointerUp={(event) => {
-                  const start = touchStart.current;
-                  touchStart.current = null;
-                  if (start?.id !== event.pointerId) return;
-                  touchSelected.current = true;
-                  choose(index);
-                  window.setTimeout(() => {
-                    touchSelected.current = false;
-                  }, 350);
-                }}
-                onPointerCancel={() => {
-                  touchStart.current = null;
+                    optionList.current?.setPointerCapture(event.pointerId);
+                  }
                 }}
                 onClick={(event) => {
                   event.preventDefault();
