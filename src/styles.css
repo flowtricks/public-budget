@@ -3277,8 +3277,16 @@ svg {
 .structured-form .form-row-group > .field:has(textarea) {
   align-items: start;
 }
+.structured-form .form-row-group > .field:has(.transaction-note) {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding-block: 0.5rem;
+}
 .structured-form .form-row-group > .field:has(textarea) > span {
   padding-top: 0.714286rem;
+}
+.structured-form .form-row-group > .field:has(.transaction-note) > span {
+  padding-top: 0;
 }
 .structured-form .form-row-group .field textarea {
   field-sizing: content;
@@ -3288,12 +3296,6 @@ svg {
   overflow-y: hidden;
   overflow-wrap: anywhere;
   resize: none;
-}
-.structured-form
-  .form-row-group
-  .field
-  textarea.transaction-note:placeholder-shown {
-  text-align: right;
 }
 .structured-form .field select {
   text-align-last: right;
