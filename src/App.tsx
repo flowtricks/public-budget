@@ -847,7 +847,19 @@ export default function App() {
         {syncOpen && (
           <Modal
             key="sync"
-            title="Everything in sync"
+            title={
+              snap.demo
+                ? "Saved on this device"
+                : snap.doc?.queue.some((item) => item.conflict)
+                  ? "Changes need review"
+                  : snap.error
+                    ? "Sync needs attention"
+                    : snap.doc?.queue.length
+                      ? snap.syncing
+                        ? "Syncing changes…"
+                        : "Changes waiting to sync"
+                      : "Everything in sync"
+            }
             subtitle={
               snap.demo
                 ? "This sample budget is stored only on this device."

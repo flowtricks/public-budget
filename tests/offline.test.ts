@@ -134,6 +134,19 @@ async function start() {
   return store;
 }
 describe("offline outbox", () => {
+  it("sends queued edits even when the live notification URL is invalid", async () => {
+    vi.stubGlobal("location", { pathname: "/", href: "invalid" });
+    vi.stubGlobal("WebSocket", class {});
+    const store = await start();
+    await store.save(
+      [{ ...store.getSnapshot().view!.records.food, name: "Groceries" } as Envelope],
+      "Edit envelope",
+    );
+    await store.sync();
+    expect(store.getSnapshot().doc?.queue).toHaveLength(0);
+    expect((remote.records.food as Envelope).name).toBe("Groceries");
+    expect(store.getSnapshot().error).toBeUndefined();
+  });
   it("catches a live notification arriving after an in-flight pull took its snapshot", async () => {
     let socket: any;
     vi.stubGlobal("location", { href: "https://budget.test/" });

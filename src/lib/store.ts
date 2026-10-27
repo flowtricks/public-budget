@@ -320,6 +320,7 @@ export async function sync() {
   clearTimeout(retry);
   let succeeded = false;
   const task = async () => {
+    let stage = "Checking your session";
     update({
       syncing: true,
       ...(snapshot.doc?.queue.length ? { status: "Syncing…" } : {}),
@@ -328,7 +329,9 @@ export async function sync() {
       await api("/api/session");
       update({ online: true });
       live.setEnabled(document.visibilityState === "visible");
+      stage = "Opening saved changes";
       await load();
+      stage = "Receiving shared changes";
       await pull();
       const doc = snapshot.doc;
       const blocked = new Set<string>();
@@ -341,7 +344,9 @@ export async function sync() {
           continue;
         }
         try {
+          stage = "Sending a saved change";
           const receipt = await api("/api/operations", item.op);
+          stage = "Confirming a saved change";
           await pull();
           if (snapshot.doc?.queue.some((queued) => queued.op.id === item.op.id))
             await mutate((current) =>
@@ -369,6 +374,7 @@ export async function sync() {
           } else throw error;
         }
       }
+      stage = "Finishing sync";
       if (doc?.queue.length) await pull();
       await mutate((current) => ({
         ...current,
@@ -398,7 +404,7 @@ export async function sync() {
             : "Offline · saved on this phone",
         error: auth
           ? "Your changes are safe here. Sign in to finish syncing."
-          : e.message,
+          : `${stage}: ${e.message || "Could not complete this step."}`,
       });
       if (!auth) {
         clearTimeout(retry);

@@ -10,7 +10,7 @@ class Socket {
   close = vi.fn(() => {
     this.readyState = 3;
   });
-  constructor(public url: URL) {
+  constructor(public url: string) {
     Socket.all.push(this);
   }
   message(data: string) {
@@ -39,7 +39,7 @@ describe("live update connection", () => {
     const live = new LiveUpdates(changed, vi.fn());
     live.setEnabled(true);
     const socket = Socket.all[0];
-    expect(socket.url.href).toBe("wss://budget.test/api/live");
+    expect(socket.url).toBe("wss://budget.test/api/live");
     socket.ready();
     expect(live.connected).toBe(true);
     socket.message('{"type":"changed"}');
@@ -62,6 +62,14 @@ describe("live update connection", () => {
     expect(Socket.all).toHaveLength(2);
     Socket.all[1].ready();
     expect(changed).toHaveBeenCalledTimes(2);
+  });
+  it("keeps a malformed notification URL from throwing into budget sync", () => {
+    const live = new LiveUpdates(vi.fn(), vi.fn());
+    vi.stubGlobal("location", { href: "invalid" });
+    expect(() => live.setEnabled(true)).not.toThrow();
+    vi.stubGlobal("location", { href: "https://budget.test/" });
+    vi.advanceTimersByTime(1500);
+    expect(Socket.all).toHaveLength(1);
   });
   it("stops on logout or backgrounding and ignores stale socket events", () => {
     const changed = vi.fn();

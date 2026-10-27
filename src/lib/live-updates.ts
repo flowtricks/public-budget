@@ -61,12 +61,13 @@ export class LiveUpdates {
 
   private connect() {
     if (typeof WebSocket === "undefined") return;
-    const url = new URL("/api/live", location.href);
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     let socket: WebSocket;
     try {
-      socket = new WebSocket(url);
+      const url = new URL("/api/live", location.href);
+      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+      socket = new WebSocket(url.href);
     } catch {
+      // Notifications are optional. A malformed socket URL must not stop HTTP sync.
       this.reconnect();
       return;
     }
