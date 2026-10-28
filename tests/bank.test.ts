@@ -576,6 +576,110 @@ describe("bank reconciliation", () => {
     expect(transactions(state)[0].allocations).toEqual([]);
     expect(balances(state).food).toBe(10000);
   });
+  for (const linked of [true, false]) {
+    it(`keeps an assigned pending income envelope when it posts ${linked ? "with" : "without"} a Plaid pending ID`, async () => {
+      updates.added = [
+        raw({
+          amount: -20,
+          merchant_name: "Employer",
+          personal_finance_category: { detailed: "INCOME_WAGES" },
+        }),
+      ];
+      await sync();
+      const pending = transactions(state)[0];
+      state = applyOperation(
+        state,
+        makeOperation(
+          state,
+          [
+            {
+              ...pending,
+              allocations: [{ envelopeId: "food", amount: 2000 }],
+              bankOriginal: { ...pending.bankOriginal, edited: true },
+            },
+          ],
+          "phone",
+          "Assign pending income",
+        ),
+      );
+      updates = {
+        ...updates,
+        added: [
+          raw({
+            transaction_id: "posted-income",
+            ...(linked ? { pending_transaction_id: "pending1" } : {}),
+            amount: -20,
+            merchant_name: linked ? "Employer" : "Employer Payroll",
+            date: "2026-10-07",
+            pending: false,
+            personal_finance_category: { detailed: "INCOME_WAGES" },
+          }),
+        ],
+        removed: [{ transaction_id: "pending1" }],
+      };
+      await sync();
+      expect(transactions(state)).toHaveLength(1);
+      expect(transactions(state)[0].id).toBe(pending.id);
+      expect(transactions(state)[0].sourceId).toBe("item1:posted-income");
+      expect(transactions(state)[0].pending).toBe(false);
+      expect(transactions(state)[0].allocations).toEqual([
+        { envelopeId: "food", amount: 2000 },
+      ]);
+      expect(balances(state).food).toBe(12000);
+    });
+  }
+  it("does not guess which of two identical pending deposits a posting replaces", async () => {
+    updates.added = [
+      raw({ amount: -20, merchant_name: "Employer" }),
+      raw({
+        transaction_id: "pending2",
+        amount: -20,
+        merchant_name: "Employer",
+      }),
+    ];
+    await sync();
+    updates = {
+      ...updates,
+      added: [
+        raw({
+          transaction_id: "posted-income",
+          amount: -20,
+          merchant_name: "Employer",
+          date: "2026-10-07",
+          pending: false,
+        }),
+      ],
+      removed: [{ transaction_id: "pending1" }, { transaction_id: "pending2" }],
+    };
+    await sync();
+    expect(transactions(state)).toHaveLength(3);
+    expect(transactions(state).filter((tx) => !tx.deleted)).toHaveLength(1);
+  });
+  it("does not guess which of two identical postings replaced a pending deposit", async () => {
+    updates.added = [raw({ amount: -20, merchant_name: "Employer" })];
+    await sync();
+    updates = {
+      ...updates,
+      added: [
+        raw({
+          transaction_id: "posted1",
+          amount: -20,
+          merchant_name: "Employer Payroll",
+          pending: false,
+        }),
+        raw({
+          transaction_id: "posted2",
+          amount: -20,
+          merchant_name: "Employer Payroll",
+          pending: false,
+        }),
+      ],
+      removed: [{ transaction_id: "pending1" }],
+    };
+    await sync();
+    expect(transactions(state)).toHaveLength(3);
+    expect(transactions(state).filter((tx) => !tx.deleted)).toHaveLength(2);
+  });
   it("updates a posted tip while preserving an edited note", async () => {
     updates.added = [raw()];
     await sync();

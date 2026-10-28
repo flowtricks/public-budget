@@ -790,6 +790,7 @@ async function syncConnection(env: Env, c: Connection) {
     if (!recentEnvelopes.has(merchant))
       recentEnvelopes.set(merchant, envelopeId);
   }
+  const sourceIdsBeforeSync = new Set(bySourceId.keys());
   async function flush() {
     if (!staged.size) return;
     await selectionUnchanged();
@@ -848,12 +849,69 @@ async function syncConnection(env: Env, c: Connection) {
       ) || settings(state).fallbackId
     );
   }
+  function matchesUnlinkedPending(raw: any, previous: Transaction) {
+    if (raw.pending || raw.pending_transaction_id) return false;
+    const original = previous.bankOriginal || {};
+    const payees = [raw.merchant_name, raw.name]
+      .filter((name): name is string => typeof name === "string")
+      .map(merchantKey);
+    const amount = Math.round(Math.abs(raw.amount) * 100);
+    const postedDay = Date.parse(raw.authorized_date || raw.date);
+    const pendingDate =
+      typeof original.authorizedDate === "string"
+        ? original.authorizedDate
+        : typeof original.date === "string"
+          ? original.date
+          : previous.date;
+    const pendingDay = Date.parse(pendingDate);
+    const days = (postedDay - pendingDay) / 86400000;
+    const samePayee = payees.includes(
+      merchantKey(
+        typeof original.payee === "string" ? original.payee : previous.payee,
+      ),
+    );
+    const category = raw.personal_finance_category?.detailed;
+    return (
+      previous.pending &&
+      !previous.deleted &&
+      previous.bankOriginal?.accountId === raw.account_id &&
+      previous.bankOriginal?.amount === amount &&
+      raw.amount < 0 ===
+        (previous.type === "income" || previous.type === "refund") &&
+      (samePayee ||
+        (!!category && category === previous.bankOriginal?.category)) &&
+      days >= -1 &&
+      days <= 14
+    );
+  }
+  function unlinkedPendingReplacement(raw: any) {
+    const candidates = removed.flatMap((item) => {
+      if (pendingReplaced.has(item.transaction_id)) return [];
+      const previous = bySourceId.get(c.id + ":" + item.transaction_id);
+      return previous && matchesUnlinkedPending(raw, previous)
+        ? [{ id: item.transaction_id, transaction: previous }]
+        : [];
+    });
+    if (candidates.length !== 1) return;
+    const otherPostings = added.filter(
+      (item) =>
+        !sourceIdsBeforeSync.has(c.id + ":" + item.transaction_id) &&
+        matchesUnlinkedPending(item, candidates[0].transaction),
+    );
+    // Plaid sometimes omits pending_transaction_id. Only reuse a pending record
+    // when the same bank update has exactly one matching pending and posting.
+    return otherPostings.length === 1 ? candidates[0] : undefined;
+  }
   for (const raw of added) {
     await selectionUnchanged();
     const sourceId = c.id + ":" + raw.transaction_id;
     const pendingId = raw.pending_transaction_id
       ? c.id + ":" + raw.pending_transaction_id
       : undefined;
+    const unlinked =
+      !bySourceId.has(sourceId) && !pendingId
+        ? unlinkedPendingReplacement(raw)
+        : undefined;
     const purchaseDay = raw.authorized_date || raw.date;
     const oneTimeBackfill = c.backfill_day === purchaseDay;
     if (
@@ -861,12 +919,15 @@ async function syncConnection(env: Env, c: Connection) {
       (!happenedAfterConnection(raw, c.connected_at, c.connected_on) &&
         !oneTimeBackfill &&
         !bySourceId.has(sourceId) &&
-        !(pendingId && bySourceId.has(pendingId)))
+        !(pendingId && bySourceId.has(pendingId)) &&
+        !unlinked)
     )
       continue;
     const old =
       bySourceId.get(sourceId) ||
-      (pendingId ? bySourceId.get(pendingId) : undefined);
+      (pendingId ? bySourceId.get(pendingId) : undefined) ||
+      unlinked?.transaction;
+    if (unlinked) pendingReplaced.add(unlinked.id);
     const amount = Math.round(Math.abs(raw.amount) * 100);
     const payee = raw.merchant_name || raw.name || "Bank transaction";
     const date = raw.authorized_date || raw.date;
